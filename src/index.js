@@ -1,5 +1,5 @@
 const express = require('express');
-const { Webhooks } = require('@octokit/webhooks');
+const crypto = require('crypto');
 const bodyParser = require('body-parser');
 require('dotenv').config();
 
@@ -32,32 +32,65 @@ if (missingEnvVars.length > 0) {
 const app = express();
 const port = process.env.PORT || 3000;
 
-const webhooks = new Webhooks({
-  secret: process.env.GITHUB_WEBHOOK_SECRET,
-});
-
 const githubService = new GitHubService();
 const reviewService = new ReviewService();
 
-app.use(bodyParser.json());
+// Webhook signature verification
+function verifySignature(payload, signature) {
+  const expectedSignature = 'sha256=' + crypto
+    .createHmac('sha256', process.env.GITHUB_WEBHOOK_SECRET)
+    .update(payload, 'utf8')
+    .digest('hex');
+  
+  return crypto.timingSafeEqual(
+    Buffer.from(signature),
+    Buffer.from(expectedSignature)
+  );
+}
 
-app.post('/webhook', webhooks.middleware);
+app.use(bodyParser.raw({ type: 'application/json' }));
 
-webhooks.on('pull_request.opened', async ({ payload }) => {
+// Handle webhook requests
+app.post('/webhook', async (req, res) => {
   try {
-    logger.info(`New PR opened: ${payload.pull_request.html_url}`);
-    await handlePullRequest(payload);
+    const signature = req.get('x-hub-signature-256');
+    const event = req.get('x-github-event');
+    const deliveryId = req.get('x-github-delivery');
+    
+    if (!signature) {
+      logger.warn('No signature provided');
+      return res.status(401).send('Unauthorized');
+    }
+    
+    // Verify the webhook signature
+    const isValid = verifySignature(req.body, signature);
+    if (!isValid) {
+      logger.warn('Invalid webhook signature');
+      return res.status(401).send('Unauthorized');
+    }
+    
+    // Parse the payload
+    const payload = JSON.parse(req.body.toString());
+    
+    logger.info(`Received ${event} event (delivery: ${deliveryId})`);
+    
+    // Handle pull request events
+    if (event === 'pull_request') {
+      const action = payload.action;
+      if (action === 'opened' || action === 'synchronize') {
+        logger.info(`Processing PR ${action}: ${payload.pull_request.html_url}`);
+        await handlePullRequest(payload);
+      } else {
+        logger.info(`Ignoring PR action: ${action}`);
+      }
+    } else {
+      logger.info(`Ignoring event: ${event}`);
+    }
+    
+    res.status(200).send('OK');
   } catch (error) {
-    logger.error('Error handling PR opened event:', error);
-  }
-});
-
-webhooks.on('pull_request.synchronize', async ({ payload }) => {
-  try {
-    logger.info(`PR updated: ${payload.pull_request.html_url}`);
-    await handlePullRequest(payload);
-  } catch (error) {
-    logger.error('Error handling PR synchronize event:', error);
+    logger.error('Webhook processing error:', error);
+    res.status(500).send('Internal Server Error');
   }
 });
 

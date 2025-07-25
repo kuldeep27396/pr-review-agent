@@ -254,6 +254,7 @@ We welcome contributions! Please:
 ### Getting Help
 
 - Check the [Deployment Guide](docs/DEPLOYMENT.md) for detailed setup instructions
+- See [Railway Deployment Guide](docs/RAILWAY_DEPLOYMENT.md) for Railway-specific instructions
 - See [Render Deployment Guide](docs/RENDER_DEPLOYMENT.md) for Render-specific instructions
 - Review application logs in the `logs/` directory
 - Open an issue on GitHub for bugs or feature requests

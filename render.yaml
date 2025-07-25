@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: pr-review-agent
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: GITHUB_APP_ID
+        sync: false
+      - key: GITHUB_PRIVATE_KEY
+        sync: false
+      - key: GITHUB_WEBHOOK_SECRET
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: MAX_FILES_TO_REVIEW
+        value: 10
+      - key: MAX_FILE_SIZE_KB
+        value: 100
+      - key: REVIEW_TIMEOUT_MS
+        value: 30000
+      - key: LOG_LEVEL
+        value: info

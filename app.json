@@ -1,0 +1,51 @@
+{
+  "name": "GitHub PR Review Agent",
+  "description": "Automated GitHub PR reviews powered by Groq AI",
+  "repository": "https://github.com/kuldeep27396/pr-review-agent",
+  "logo": "https://avatars.githubusercontent.com/u/92997159?v=4",
+  "keywords": ["github", "pr-review", "ai", "groq", "automation"],
+  "env": {
+    "GITHUB_APP_ID": {
+      "description": "GitHub App ID from your GitHub App settings",
+      "required": true
+    },
+    "GITHUB_PRIVATE_KEY": {
+      "description": "GitHub App Private Key (PEM format)",
+      "required": true
+    },
+    "GITHUB_WEBHOOK_SECRET": {
+      "description": "Webhook secret for GitHub App",
+      "required": true
+    },
+    "GROQ_API_KEY": {
+      "description": "Groq API key for AI-powered code analysis",
+      "required": true
+    },
+    "MAX_FILES_TO_REVIEW": {
+      "description": "Maximum number of files to review per PR",
+      "value": "10",
+      "required": false
+    },
+    "MAX_FILE_SIZE_KB": {
+      "description": "Maximum file size in KB to review",
+      "value": "100",
+      "required": false
+    },
+    "REVIEW_TIMEOUT_MS": {
+      "description": "Timeout for AI review in milliseconds",
+      "value": "30000",
+      "required": false
+    }
+  },
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  },
+  "buildpacks": [
+    {
+      "url": "heroku/nodejs"
+    }
+  ]
+}

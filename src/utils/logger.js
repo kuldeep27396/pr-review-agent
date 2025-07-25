@@ -5,9 +5,21 @@ class Logger {
   constructor() {
     this.logLevel = process.env.LOG_LEVEL || 'info';
     this.logDir = path.join(process.cwd(), 'logs');
+    this.canWriteFiles = false;
     
-    if (!fs.existsSync(this.logDir)) {
-      fs.mkdirSync(this.logDir, { recursive: true });
+    // Try to create logs directory, but don't fail if we can't
+    try {
+      if (!fs.existsSync(this.logDir)) {
+        fs.mkdirSync(this.logDir, { recursive: true });
+      }
+      // Test if we can write by creating a test file
+      const testFile = path.join(this.logDir, 'test.log');
+      fs.writeFileSync(testFile, 'test');
+      fs.unlinkSync(testFile);
+      this.canWriteFiles = true;
+    } catch (error) {
+      console.warn('Cannot create log files, logging to console only:', error.message);
+      this.canWriteFiles = false;
     }
 
     this.levels = {
@@ -28,6 +40,11 @@ class Logger {
   }
 
   writeToFile(level, formattedMessage) {
+    // Only attempt to write to files if we can
+    if (!this.canWriteFiles) {
+      return;
+    }
+    
     const logFile = path.join(this.logDir, `${level}.log`);
     const allLogFile = path.join(this.logDir, 'all.log');
     
@@ -35,7 +52,9 @@ class Logger {
       fs.appendFileSync(logFile, formattedMessage + '\n');
       fs.appendFileSync(allLogFile, formattedMessage + '\n');
     } catch (error) {
-      console.error('Failed to write to log file:', error);
+      // If we suddenly can't write, disable file logging
+      this.canWriteFiles = false;
+      console.warn('Log file writing disabled due to error:', error.message);
     }
   }
 

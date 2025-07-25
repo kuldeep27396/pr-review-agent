@@ -102,21 +102,42 @@ async function handlePullRequest(payload) {
   const repo = repository.name;
   const prNumber = pull_request.number;
 
+  logger.info(`🔄 Starting PR processing: #${prNumber} in ${owner}/${repo}`);
+  logger.info(`📋 Installation ID: ${installationId}`);
+
   try {
+    logger.info('🔑 Getting GitHub installation token...');
     const octokit = await githubService.getInstallationOctokit(installationId);
     
+    logger.info('📁 Fetching PR files...');
     const files = await githubService.getPRFiles(octokit, owner, repo, prNumber);
+    logger.info(`📝 Found ${files.length} files to review`);
     
+    if (files.length === 0) {
+      logger.info('⚠️ No reviewable files found in PR');
+      return;
+    }
+    
+    logger.info('🤖 Starting AI review...');
     const review = await reviewService.reviewPR(files, pull_request);
     
-    if (review && review.comments.length > 0) {
+    if (review && review.comments && review.comments.length > 0) {
+      logger.info(`💬 Posting ${review.comments.length} review comments...`);
       await githubService.postReview(octokit, owner, repo, prNumber, review);
-      logger.info(`Posted review for PR #${prNumber} in ${owner}/${repo}`);
+      logger.info(`✅ Posted review for PR #${prNumber} in ${owner}/${repo}`);
     } else {
-      logger.info(`No issues found in PR #${prNumber} in ${owner}/${repo}`);
+      logger.info(`🎉 No issues found in PR #${prNumber} in ${owner}/${repo}`);
     }
   } catch (error) {
-    logger.error(`Error processing PR #${prNumber} in ${owner}/${repo}:`, error);
+    logger.error(`❌ Error processing PR #${prNumber} in ${owner}/${repo}:`);
+    logger.error(`Error name: ${error.name}`);
+    logger.error(`Error message: ${error.message}`);
+    logger.error(`Error stack: ${error.stack}`);
+    
+    if (error.response) {
+      logger.error(`HTTP Status: ${error.response.status}`);
+      logger.error(`HTTP Response: ${JSON.stringify(error.response.data)}`);
+    }
   }
 }
 

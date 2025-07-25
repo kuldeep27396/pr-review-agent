@@ -7,6 +7,28 @@ const GitHubService = require('./services/github');
 const ReviewService = require('./services/review');
 const { logger } = require('./utils/logger');
 
+// Validate required environment variables
+const requiredEnvVars = [
+  'GITHUB_APP_ID',
+  'GITHUB_PRIVATE_KEY', 
+  'GITHUB_WEBHOOK_SECRET',
+  'GROQ_API_KEY'
+];
+
+const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
+
+if (missingEnvVars.length > 0) {
+  console.error('❌ Missing required environment variables:');
+  missingEnvVars.forEach(envVar => {
+    console.error(`   - ${envVar}`);
+  });
+  console.error('\n📖 Please check the deployment documentation:');
+  console.error('   - README.md for setup instructions');
+  console.error('   - docs/RAILWAY_DEPLOYMENT.md for Railway-specific setup');
+  console.error('\n💡 Make sure to set all required environment variables in your deployment platform.');
+  process.exit(1);
+}
+
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -79,6 +101,16 @@ app.get('/', (req, res) => {
 
 app.listen(port, () => {
   logger.info(`GitHub PR Review Agent listening on port ${port}`);
+  
+  // Log configuration status (without exposing sensitive values)
+  logger.info('✅ Configuration validated:');
+  logger.info(`   - GitHub App ID: ${process.env.GITHUB_APP_ID}`);
+  logger.info(`   - Private Key: ${process.env.GITHUB_PRIVATE_KEY ? 'Set' : 'Missing'}`);
+  logger.info(`   - Webhook Secret: ${process.env.GITHUB_WEBHOOK_SECRET ? 'Set' : 'Missing'}`);
+  logger.info(`   - Groq API Key: ${process.env.GROQ_API_KEY ? 'Set' : 'Missing'}`);
+  logger.info(`   - Environment: ${process.env.NODE_ENV || 'development'}`);
+  
+  logger.info('🚀 Ready to review pull requests!');
 });
 
 process.on('unhandledRejection', (reason, promise) => {

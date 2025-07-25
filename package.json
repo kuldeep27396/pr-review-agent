@@ -8,7 +8,8 @@
     "dev": "nodemon src/index.js",
     "test": "jest",
     "test-server": "node test/test-server.js",
-    "setup": "node scripts/setup-github-app.js"
+    "setup": "node scripts/setup-github-app.js",
+    "validate": "node scripts/validate-env.js"
   },
   "keywords": ["github", "pr-review", "ai", "groq", "automation"],
   "author": "GitHub PR Review Agent",

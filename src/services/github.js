@@ -113,6 +113,8 @@ class GitHubService {
 
       const filesWithContent = await Promise.all(
         filteredFiles.map(async (file) => {
+          logger.info(`🔍 Processing file: ${file.filename} (status: ${file.status}, changes: +${file.additions}/-${file.deletions})`);
+          
           try {
             // Use PR head SHA instead of individual file SHA for better reliability
             const { data: content } = await octokit.rest.repos.getContent({
@@ -124,9 +126,18 @@ class GitHubService {
 
             logger.info(`✅ Fetched content for ${file.filename} (${content.size} bytes)`);
 
+            // For modified files, also get the patch/diff information
+            let fileContent = Buffer.from(content.content, 'base64').toString('utf-8');
+            
+            // If file was modified (not added), include the patch information for better context
+            if (file.status === 'modified' && file.patch) {
+              logger.info(`📝 File ${file.filename} was modified, including patch context`);
+              fileContent = `=== FILE CONTENT ===\n${fileContent}\n\n=== CHANGES MADE ===\n${file.patch}`;
+            }
+
             return {
               ...file,
-              content: Buffer.from(content.content, 'base64').toString('utf-8'),
+              content: fileContent,
             };
           } catch (error) {
             logger.warn(`Could not fetch content for ${file.filename}:`, error.message);
@@ -142,12 +153,30 @@ class GitHubService {
               
               logger.info(`✅ Fetched content for ${file.filename} using branch ref (${content.size} bytes)`);
               
+              let fileContent = Buffer.from(content.content, 'base64').toString('utf-8');
+              
+              // Include patch for modified files
+              if (file.status === 'modified' && file.patch) {
+                logger.info(`📝 File ${file.filename} was modified, including patch context (fallback)`);
+                fileContent = `=== FILE CONTENT ===\n${fileContent}\n\n=== CHANGES MADE ===\n${file.patch}`;
+              }
+              
               return {
                 ...file,
-                content: Buffer.from(content.content, 'base64').toString('utf-8'),
+                content: fileContent,
               };
             } catch (fallbackError) {
               logger.warn(`Fallback also failed for ${file.filename}:`, fallbackError.message);
+              
+              // Last resort: if we can't get full content but have patch, review just the patch
+              if (file.patch) {
+                logger.info(`📄 Using patch-only analysis for ${file.filename}`);
+                return {
+                  ...file,
+                  content: `=== CHANGES MADE ===\n${file.patch}`,
+                };
+              }
+              
               return {
                 ...file,
                 content: null,

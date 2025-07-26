@@ -59,12 +59,27 @@ class GroqService {
     const context = pullRequestContext ? 
       `PR Title: ${pullRequestContext.title}\nPR Description: ${pullRequestContext.body || 'No description provided'}\n\n` : '';
 
+    // Enhanced prompt for modified files vs new files
+    const analysisInstructions = file.status === 'modified' 
+      ? `This file was MODIFIED. Focus your review on:
+         - The specific changes made (shown in the CHANGES MADE section)
+         - How the changes impact the existing code
+         - Potential issues introduced by the modifications
+         - Compatibility with the existing codebase`
+      : `This file was ADDED. Focus your review on:
+         - Overall code quality and structure
+         - Best practices implementation
+         - Potential security vulnerabilities
+         - Performance considerations`;
+
     return `${context}Please review the following code changes:
 
 File: ${file.filename}
-Status: ${file.status}
+Status: ${file.status} 
 Additions: ${file.additions}
 Deletions: ${file.deletions}
+
+${analysisInstructions}
 
 Code Content:
 \`\`\`
@@ -73,10 +88,12 @@ ${file.content}
 
 Please provide:
 1. Overall assessment (APPROVE, REQUEST_CHANGES, or COMMENT)
-2. Specific issues found with line numbers
+2. Specific issues found with line numbers (use line numbers from the actual file content)
 3. Suggestions for improvement
 4. Security concerns if any
 5. Performance considerations
+
+${file.status === 'modified' ? 'Pay special attention to the changes made and their impact on the existing code.' : ''}
 
 Format your response as JSON with this structure:
 {

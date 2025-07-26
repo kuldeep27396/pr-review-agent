@@ -28,6 +28,7 @@ class GitHubService {
     try {
       logger.info(`🔑 Creating GitHub App auth for installation: ${installationId}`);
       
+      // Test if we can create the auth object
       const auth = createAppAuth({
         appId: parseInt(this.appId), // Ensure it's a number
         privateKey: this.privateKey.replace(/\\n/g, '\n'), // Handle escaped newlines
@@ -36,8 +37,14 @@ class GitHubService {
 
       logger.info('✅ GitHub App auth created successfully');
       
+      // Get the token manually to debug
+      logger.info('🔍 Getting installation token...');
+      const { token } = await auth({ type: 'installation' });
+      logger.info(`✅ Installation token obtained: ${token.substring(0, 20)}...`);
+      
+      // Create Octokit with the token directly
       const octokit = new Octokit({
-        auth,
+        auth: token,
       });
 
       // Test the authentication by getting installation info
@@ -55,6 +62,17 @@ class GitHubService {
       logger.error(`Installation ID: ${installationId}`);
       logger.error(`Private Key length: ${this.privateKey.length}`);
       logger.error(`Private Key starts with: ${this.privateKey.substring(0, 50)}...`);
+      
+      if (error.message.includes('PEM')) {
+        logger.error('🔑 Private key format issue detected');
+        logger.error('Make sure the private key includes proper line breaks');
+      }
+      
+      if (error.message.includes('installation')) {
+        logger.error('🏠 Installation issue detected');
+        logger.error('Make sure the GitHub App is installed on the repository');
+      }
+      
       throw error;
     }
   }

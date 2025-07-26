@@ -12,7 +12,7 @@ const requiredEnvVars = [
   'GITHUB_APP_ID',
   'GITHUB_PRIVATE_KEY', 
   'GITHUB_WEBHOOK_SECRET',
-  'GROQ_API_KEY'
+  'OPENAI_API_KEY'
 ];
 
 const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
@@ -161,7 +161,7 @@ app.listen(port, () => {
   logger.info(`   - GitHub App ID: ${process.env.GITHUB_APP_ID}`);
   logger.info(`   - Private Key: ${process.env.GITHUB_PRIVATE_KEY ? 'Set' : 'Missing'}`);
   logger.info(`   - Webhook Secret: ${process.env.GITHUB_WEBHOOK_SECRET ? 'Set' : 'Missing'}`);
-  logger.info(`   - Groq API Key: ${process.env.GROQ_API_KEY ? 'Set' : 'Missing'}`);
+  logger.info(`   - OpenAI API Key: ${process.env.OPENAI_API_KEY ? 'Set' : 'Missing'}`);
   logger.info(`   - Environment: ${process.env.NODE_ENV || 'development'}`);
   
   logger.info('🚀 Ready to review pull requests!');

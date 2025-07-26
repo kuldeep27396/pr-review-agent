@@ -1,9 +1,9 @@
-const GroqService = require('./groq');
+const OpenAIService = require('./openai');
 const { logger } = require('../utils/logger');
 
 class ReviewService {
   constructor() {
-    this.groqService = new GroqService();
+    this.openaiService = new OpenAIService();
   }
 
   async reviewPR(files, pullRequest) {
@@ -17,7 +17,7 @@ class ReviewService {
 
       const fileAnalyses = await Promise.all(
         files.map(async (file) => {
-          const analysis = await this.groqService.analyzeCode(file, pullRequest);
+          const analysis = await this.openaiService.analyzeCode(file, pullRequest);
           return analysis;
         })
       );
@@ -29,7 +29,7 @@ class ReviewService {
         return null;
       }
 
-      const overallSummary = await this.groqService.generateOverallSummary(validAnalyses, pullRequest);
+      const overallSummary = await this.openaiService.generateOverallSummary(validAnalyses, pullRequest);
 
       const comments = this.generateComments(validAnalyses);
 

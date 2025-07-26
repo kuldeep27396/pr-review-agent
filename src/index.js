@@ -121,12 +121,20 @@ async function handlePullRequest(payload) {
     logger.info('🤖 Starting AI review...');
     const review = await reviewService.reviewPR(files, pull_request);
     
-    if (review && review.comments && review.comments.length > 0) {
-      logger.info(`💬 Posting ${review.comments.length} review comments...`);
-      await githubService.postReview(octokit, owner, repo, prNumber, review);
-      logger.info(`✅ Posted review for PR #${prNumber} in ${owner}/${repo}`);
+    if (review) {
+      // Post review if there are comments OR if there's a meaningful summary (like skipped issues)
+      const hasComments = review.comments && review.comments.length > 0;
+      const hasIssues = review.totalIssues > 0;
+      
+      if (hasComments || hasIssues) {
+        logger.info(`💬 Posting review with ${review.comments.length} line comments and ${review.totalIssues} total issues...`);
+        await githubService.postReview(octokit, owner, repo, prNumber, review);
+        logger.info(`✅ Posted review for PR #${prNumber} in ${owner}/${repo}`);
+      } else {
+        logger.info(`🎉 No issues found in PR #${prNumber} in ${owner}/${repo}`);
+      }
     } else {
-      logger.info(`🎉 No issues found in PR #${prNumber} in ${owner}/${repo}`);
+      logger.info(`⚠️ No review generated for PR #${prNumber} in ${owner}/${repo}`);
     }
   } catch (error) {
     logger.error(`❌ Error processing PR #${prNumber} in ${owner}/${repo}:`);

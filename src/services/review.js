@@ -88,6 +88,7 @@ class ReviewService {
   extractDiffLines(analysis) {
     // Extract line numbers from patch/diff information
     if (!analysis.patch) {
+      logger.warn(`No patch information available for ${analysis.file}`);
       return [];
     }
 
@@ -95,24 +96,39 @@ class ReviewService {
     const patchLines = analysis.patch.split('\n');
     let currentLine = 0;
 
+    logger.info(`🔍 Parsing diff for ${analysis.file}:`);
+    logger.info(`Patch: ${analysis.patch.substring(0, 200)}...`);
+
     for (const line of patchLines) {
       // Parse diff hunk headers like @@ -1,7 +1,8 @@
       const hunkMatch = line.match(/^@@\s+-\d+(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@/);
       if (hunkMatch) {
         currentLine = parseInt(hunkMatch[1]);
+        logger.info(`📍 Found hunk starting at line ${currentLine}`);
+        continue;
+      }
+
+      // Skip file headers
+      if (line.startsWith('+++') || line.startsWith('---')) {
         continue;
       }
 
       // Track line numbers for added/modified lines (+ prefix) and context lines (space prefix)
-      if (line.startsWith('+') || line.startsWith(' ')) {
-        if (!line.startsWith('+++')) { // Skip file headers
-          lines.push(currentLine);
-        }
+      if (line.startsWith('+')) {
+        lines.push(currentLine);
+        logger.info(`➕ Added line ${currentLine}: ${line.substring(0, 50)}`);
         currentLine++;
+      } else if (line.startsWith(' ')) {
+        lines.push(currentLine);
+        logger.info(`📄 Context line ${currentLine}: ${line.substring(0, 50)}`);
+        currentLine++;
+      } else if (line.startsWith('-')) {
+        // For deleted lines (-), don't increment currentLine as they don't exist in new version
+        logger.info(`➖ Deleted line (not counting): ${line.substring(0, 50)}`);
       }
-      // For deleted lines (-), don't increment currentLine as they don't exist in new version
     }
 
+    logger.info(`🔢 Valid diff lines for ${analysis.file}: [${lines.join(', ')}]`);
     return lines;
   }
 

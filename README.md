@@ -3,8 +3,6 @@
 An automated GitHub PR review agent powered by Groq AI that provides intelligent code reviews as soon as pull requests are created or updated. Built to work like CodeRabbit, but **free and self-hosted**.
 
 [![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template?template=https://github.com/kuldeep27396/pr-review-agent)
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/kuldeep27396/pr-review-agent)
-[![Deploy to Heroku](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/kuldeep27396/pr-review-agent)
 
 ## ✨ Features
 
@@ -131,17 +129,22 @@ graph TD
 
 ## 🚀 Quick Start
 
-### Option 1: One-Click Deploy
+### Deploy on Railway (Recommended)
 
-Deploy to your preferred platform with pre-configured settings:
+Deploy with one click on Railway for the best experience:
 
-| Platform | Deploy | Features |
-|----------|--------|----------|
-| Railway | [![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template?template=https://github.com/kuldeep27396/pr-review-agent) | Auto-scaling, Persistent logs |
-| Render | [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/kuldeep27396/pr-review-agent) | Free tier, Easy setup |
-| Heroku | [![Deploy to Heroku](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/kuldeep27396/pr-review-agent) | Add-ons ecosystem |
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template?template=https://github.com/kuldeep27396/pr-review-agent)
 
-### Option 2: Manual Setup
+**Why Railway?**
+- ⚡ **Auto-scaling** based on traffic
+- 📊 **Persistent logs** and metrics
+- 🔄 **Automatic deployments** from GitHub
+- 💰 **Generous free tier** for testing
+- 🛠️ **Built-in environment variable management**
+
+### Manual Setup (Optional)
+
+If you prefer to run locally or use a different platform:
 
 1. **Clone the repository**
    ```bash
@@ -417,44 +420,45 @@ DEBUG: Detailed execution flow, variable values, timing info
 - Test with smaller code snippets
 - Monitor API response times
 
-## 🚀 Deployment Guides
+## 🚀 Railway Deployment Guide
 
-### Railway (Recommended)
+### Step-by-Step Railway Setup
 
-Railway provides excellent support for Node.js applications with automatic deployments:
+1. **Click Deploy Button**
+   [![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template?template=https://github.com/kuldeep27396/pr-review-agent)
 
-1. **Connect Repository**: Link your GitHub repository
-2. **Set Environment Variables**: Add all required environment variables
-3. **Deploy**: Railway automatically detects and deploys the application
-4. **Configure Domain**: Set up custom domain or use Railway's provided URL
+2. **Connect Your GitHub Account**
+   - Railway will fork the repository to your account
+   - Automatic deployments will be set up
 
-**Railway-specific features:**
-- Automatic GitHub deployments
-- Built-in environment variable management
-- Persistent logging and metrics
-- Auto-scaling based on traffic
+3. **Configure Environment Variables**
+   In the Railway dashboard, add these variables:
+   ```env
+   GITHUB_APP_ID=your_app_id
+   GITHUB_PRIVATE_KEY=your_private_key
+   GITHUB_WEBHOOK_SECRET=your_webhook_secret
+   GROQ_API_KEY=your_groq_api_key
+   ```
 
-### Render
+4. **Get Your Webhook URL**
+   - After deployment, Railway provides a URL like: `https://your-app.railway.app`
+   - Your webhook URL will be: `https://your-app.railway.app/webhook`
 
-Render offers a generous free tier perfect for testing:
+5. **Update GitHub App Settings**
+   - Go to your GitHub App settings
+   - Update webhook URL to your Railway deployment URL
 
-1. **Create Web Service**: Connect your GitHub repository
-2. **Configure Build**: 
-   - Build Command: `npm install`
-   - Start Command: `npm start`
-3. **Set Environment Variables**: Add through Render dashboard
-4. **Deploy**: Render automatically builds and deploys
+### Railway Features
 
-### Heroku
+- **🔄 Automatic Deployments**: Every push to main branch triggers a new deployment
+- **📊 Built-in Monitoring**: View logs, metrics, and resource usage
+- **⚡ Auto-scaling**: Automatically scales based on traffic
+- **💰 Free Tier**: Generous free tier for personal projects
+- **🛠️ Easy Management**: Simple dashboard for environment variables and settings
 
-Classic platform with extensive add-on ecosystem:
+### Alternative Deployment (Docker)
 
-1. **Create App**: Use Heroku CLI or dashboard
-2. **Set Buildpack**: Node.js buildpack (auto-detected)
-3. **Configure Variables**: Set through CLI or dashboard
-4. **Deploy**: Push to Heroku git remote
-
-### Docker Deployment
+If you prefer Docker deployment on any platform:
 
 ```bash
 # Build the container

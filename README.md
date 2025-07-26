@@ -304,6 +304,9 @@ npm run test-server
 npm run validate
 ```
 
+<img width="1283" height="666" alt="image" src="https://github.com/user-attachments/assets/823f2705-bbde-4291-be74-d5d01ff97d24" />
+
+
 ### Project Structure
 
 ```

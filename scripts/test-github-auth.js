@@ -6,6 +6,7 @@ const { createAppAuth } = require('@octokit/auth-app');
 
 async function testGitHubAuth() {
   console.log('🧪 Testing GitHub App Authentication\n');
+  console.log('🧪 Testing GitHub App Authentication\n');
 
   const appId = process.env.GITHUB_APP_ID || '1666280';
   const privateKey = process.env.GITHUB_PRIVATE_KEY;

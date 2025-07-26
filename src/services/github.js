@@ -37,24 +37,30 @@ class GitHubService {
 
       logger.info('✅ GitHub App auth created successfully');
       
-      // Get the token manually to debug
-      logger.info('🔍 Getting installation token...');
-      const { token } = await auth({ type: 'installation' });
-      logger.info(`✅ Installation token obtained: ${token.substring(0, 20)}...`);
-      logger.info(`🔍 Token type: ${typeof token}`);
-      logger.info(`🔍 Token length: ${token.length}`);
-      logger.info(`🔍 Token ends with: ...${token.substring(token.length - 10)}`);
-      
-      // Validate token format
-      if (typeof token !== 'string' || !token.startsWith('ghs_')) {
-        logger.error(`❌ Invalid token format. Expected string starting with 'ghs_', got: ${typeof token} - ${token.substring(0, 50)}`);
-        throw new Error('Invalid installation token format');
-      }
-      
-      // Create Octokit with the token directly
+      // Try using the auth object directly instead of extracting token
+      logger.info('🔍 Creating Octokit with auth object...');
       const octokit = new Octokit({
-        auth: token,
+        auth,
       });
+      
+      // Also try manual token approach for comparison
+      logger.info('🔍 Getting installation token for debugging...');
+      try {
+        const { token } = await auth({ type: 'installation' });
+        logger.info(`✅ Installation token obtained: ${token.substring(0, 20)}...`);
+        logger.info(`🔍 Token type: ${typeof token}`);
+        logger.info(`🔍 Token length: ${token.length}`);
+        logger.info(`🔍 Token ends with: ...${token.substring(token.length - 10)}`);
+        
+        // Validate token format
+        if (typeof token !== 'string' || !token.startsWith('ghs_')) {
+          logger.error(`❌ Invalid token format. Expected string starting with 'ghs_', got: ${typeof token} - ${token.substring(0, 50)}`);
+        } else {
+          logger.info('✅ Token format validation passed');
+        }
+      } catch (tokenError) {
+        logger.error('❌ Token extraction failed:', tokenError.message);
+      }
 
       // Test the authentication by getting installation info
       logger.info('🧪 Testing GitHub authentication...');

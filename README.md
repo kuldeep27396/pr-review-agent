@@ -1,11 +1,15 @@
 # GitHub PR Review Agent 🤖
 
-An automated GitHub PR review agent powered by Groq AI that provides intelligent code reviews as soon as pull requests are created or updated. Built to work like CodeRabbit, but free and self-hosted.
+An automated GitHub PR review agent powered by Groq AI that provides intelligent code reviews as soon as pull requests are created or updated. Built to work like CodeRabbit, but **free and self-hosted**.
+
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template?template=https://github.com/kuldeep27396/pr-review-agent)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/kuldeep27396/pr-review-agent)
+[![Deploy to Heroku](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/kuldeep27396/pr-review-agent)
 
 ## ✨ Features
 
 - 🔄 **Automatic PR Reviews**: Reviews PRs immediately when opened or updated
-- 🧠 **AI-Powered Analysis**: Uses Groq's fast LLaMA models for intelligent code analysis
+- 🧠 **AI-Powered Analysis**: Uses Groq's fast LLaMA 3.3 70B model for intelligent code analysis
 - 🎯 **Smart Filtering**: Only reviews relevant files and respects size limits
 - 💬 **Contextual Comments**: Provides line-specific feedback with severity levels
 - 🔒 **Security Focus**: Identifies potential security vulnerabilities
@@ -14,16 +18,128 @@ An automated GitHub PR review agent powered by Groq AI that provides intelligent
 - 📊 **Comprehensive Reporting**: Generates overall PR summaries
 - 🚀 **Easy Deployment**: One-click deploy to popular hosting platforms
 - ⚙️ **Configurable**: Customizable review parameters and file limits
+- 🔄 **Robust Error Handling**: Handles edge cases like force-pushes and invalid commits
+
+## 🏗️ Architecture Overview
+
+```mermaid
+graph TB
+    A[GitHub Repository] -->|PR Event| B[GitHub Webhook]
+    B --> C{Webhook Verification}
+    C -->|Valid| D[PR Review Agent]
+    C -->|Invalid| E[Reject Request]
+    
+    D --> F[Extract PR Information]
+    F --> G[Authenticate with GitHub App]
+    G --> H[Fetch Changed Files]
+    H --> I{Filter Files}
+    I -->|Reviewable| J[Fetch File Contents]
+    I -->|Not Reviewable| K[Skip File]
+    
+    J --> L[Send to Groq AI]
+    L --> M[LLaMA 3.3 70B Model]
+    M --> N[Generate Review]
+    N --> O[Parse AI Response]
+    O --> P[Create GitHub Comments]
+    P --> Q[Post Review to PR]
+    
+    subgraph "Services"
+        R[GitHub Service]
+        S[Groq Service] 
+        T[Review Service]
+        U[Logger Service]
+    end
+    
+    D --> R
+    D --> S
+    D --> T
+    D --> U
+```
+
+## 🔄 System Flow
+
+### 1. Webhook Processing Flow
+
+```mermaid
+sequenceDiagram
+    participant GH as GitHub
+    participant WH as Webhook Handler
+    participant AUTH as GitHub Auth
+    participant FILES as File Service
+    participant AI as Groq AI
+    participant REVIEW as Review Service
+
+    GH->>WH: PR opened/updated event
+    WH->>WH: Verify webhook signature
+    WH->>AUTH: Create installation token
+    AUTH-->>WH: Authenticated Octokit client
+    
+    WH->>FILES: Fetch PR files
+    FILES->>GH: Get PR details & file list
+    GH-->>FILES: PR data & changed files
+    FILES->>GH: Fetch file contents (with fallback)
+    GH-->>FILES: File contents
+    FILES-->>WH: Reviewable files with content
+    
+    loop For each file
+        WH->>AI: Analyze code
+        AI->>AI: LLaMA 3.3 70B processing
+        AI-->>WH: Review analysis
+    end
+    
+    WH->>REVIEW: Generate review summary
+    REVIEW-->>WH: Formatted review
+    WH->>GH: Post review comments
+    GH-->>WH: Review posted confirmation
+```
+
+### 2. Authentication Flow
+
+```mermaid
+graph LR
+    A[GitHub App] --> B[Private Key + App ID]
+    B --> C[Create App Auth]
+    C --> D[Installation Token]
+    D --> E[Authenticated API Calls]
+    
+    F[Installation ID] --> C
+    G[Repository Access] --> D
+```
+
+### 3. File Processing Pipeline
+
+```mermaid
+graph TD
+    A[PR Files List] --> B{File Extension Check}
+    B -->|Supported| C{File Size Check}
+    B -->|Not Supported| D[Skip File]
+    C -->|Within Limits| E{File Status Check}
+    C -->|Too Large| F[Skip File]
+    E -->|Not Removed| G[Fetch Content]
+    E -->|Removed| H[Skip File]
+    
+    G --> I{Content Fetch}
+    I -->|Success| J[Add to Review Queue]
+    I -->|Failed - Try Head SHA| K[Fetch with PR Head SHA]
+    K -->|Success| J
+    K -->|Failed - Try Branch| L[Fetch with Branch Ref]
+    L -->|Success| J
+    L -->|Failed| M[Skip File]
+    
+    J --> N[Send to AI Analysis]
+```
 
 ## 🚀 Quick Start
 
 ### Option 1: One-Click Deploy
 
-Deploy to your preferred platform:
+Deploy to your preferred platform with pre-configured settings:
 
-[![Deploy to Heroku](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/kuldeep27396/pr-review-agent)
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template?template=https://github.com/kuldeep27396/pr-review-agent)
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/kuldeep27396/pr-review-agent)
+| Platform | Deploy | Features |
+|----------|--------|----------|
+| Railway | [![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template?template=https://github.com/kuldeep27396/pr-review-agent) | Auto-scaling, Persistent logs |
+| Render | [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/kuldeep27396/pr-review-agent) | Free tier, Easy setup |
+| Heroku | [![Deploy to Heroku](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/kuldeep27396/pr-review-agent) | Add-ons ecosystem |
 
 ### Option 2: Manual Setup
 
@@ -34,13 +150,11 @@ Deploy to your preferred platform:
    npm install
    ```
 
-2. **Set up your GitHub App**
-   ```bash
-   node scripts/setup-github-app.js
-   ```
-   This will guide you through creating a GitHub App and configuring the environment.
+2. **Set up your GitHub App** (see [GitHub App Setup](#github-app-setup))
 
-3. **Start the application**
+3. **Configure environment variables** (see [Configuration](#-configuration))
+
+4. **Start the application**
    ```bash
    npm start
    ```
@@ -49,101 +163,122 @@ Deploy to your preferred platform:
 
 ### GitHub App Setup
 
-1. Go to [GitHub Apps](https://github.com/settings/apps/new) and create a new app with:
+1. **Create a GitHub App** at [GitHub Apps](https://github.com/settings/apps/new):
    - **App name**: `Your PR Review Agent`
    - **Homepage URL**: Your deployment URL
    - **Webhook URL**: `https://your-domain.com/webhook`
    - **Webhook secret**: Generate a secure random string
 
-2. **Set these permissions**:
-   - Repository permissions:
-     - Contents: Read
-     - Pull requests: Write
-     - Metadata: Read
+2. **Set Repository Permissions**:
+   ```
+   Contents: Read
+   Pull requests: Write  
+   Metadata: Read
+   ```
 
-3. **Subscribe to events**:
-   - Pull request
-   - Pull request review
+3. **Subscribe to Events**:
+   ```
+   Pull request
+   Pull request review
+   ```
 
 4. **Download the private key** and note your App ID
+
+5. **Install the app** on your repositories
 
 ### Groq API Key
 
 1. Sign up at [Groq Console](https://console.groq.com/)
-2. Create an API key
+2. Create an API key (free tier available)
 3. Note the key for configuration
 
 ## ⚙️ Configuration
 
 ### Environment Variables
 
-Create a `.env` file with:
+Create a `.env` file or set environment variables:
 
 ```env
 # GitHub App Configuration (Required)
-GITHUB_APP_ID=your_github_app_id
-GITHUB_PRIVATE_KEY=your_github_private_key
-GITHUB_WEBHOOK_SECRET=your_webhook_secret
+GITHUB_APP_ID=1234567                    # Your GitHub App ID
+GITHUB_PRIVATE_KEY="-----BEGIN RSA..."  # Your private key (with proper newlines)
+GITHUB_WEBHOOK_SECRET=your_secret_here   # Webhook secret for verification
 
 # Groq API Configuration (Required)
-GROQ_API_KEY=your_groq_api_key
+GROQ_API_KEY=gsk_...                     # Your Groq API key
 
 # Server Configuration
-PORT=3000
-NODE_ENV=production
+PORT=3000                                # Server port (default: 3000)
+NODE_ENV=production                      # Environment mode
 
 # Review Settings (Optional)
-MAX_FILES_TO_REVIEW=10
-MAX_FILE_SIZE_KB=100
-REVIEW_TIMEOUT_MS=30000
-LOG_LEVEL=info
+MAX_FILES_TO_REVIEW=10                   # Max files per PR (default: 10)
+MAX_FILE_SIZE_KB=100                     # Max file size in KB (default: 100)
+REVIEW_TIMEOUT_MS=30000                  # AI request timeout (default: 30s)
+LOG_LEVEL=info                           # Logging level (error/warn/info/debug)
 ```
 
 ### Supported File Types
 
 The agent reviews these file types:
-- **JavaScript/TypeScript**: `.js`, `.jsx`, `.ts`, `.tsx`
-- **Python**: `.py`
-- **Java**: `.java`
-- **C/C++**: `.c`, `.cpp`, `.h`
-- **C#**: `.cs`
-- **PHP**: `.php`
-- **Ruby**: `.rb`
-- **Go**: `.go`
-- **Rust**: `.rs`
-- **Swift**: `.swift`
-- **Kotlin**: `.kt`
-- **Scala**: `.scala`
-- **Vue**: `.vue`
-- **Svelte**: `.svelte`
-- **Dart**: `.dart`
-- **R**: `.r`
-- **SQL**: `.sql`
-- **Shell**: `.sh`
-- **Config**: `.yaml`, `.yml`, `.json`, `.xml`
-- **Web**: `.html`, `.css`, `.scss`, `.less`
+
+| Category | Extensions |
+|----------|------------|
+| **JavaScript/TypeScript** | `.js`, `.jsx`, `.ts`, `.tsx`, `.vue`, `.svelte` |
+| **Python** | `.py` |
+| **Java/JVM** | `.java`, `.kt`, `.scala` |
+| **C/C++** | `.c`, `.cpp`, `.h` |
+| **Systems** | `.rs`, `.go`, `.cs` |
+| **Mobile** | `.swift`, `.dart` |
+| **Web** | `.html`, `.css`, `.scss`, `.less` |
+| **Data** | `.sql`, `.r`, `.yaml`, `.yml`, `.json`, `.xml` |
+| **Scripts** | `.sh`, `.php`, `.rb` |
 
 ## 📖 How It Works
 
-1. **PR Detection**: Listens for PR opened/updated webhooks from GitHub
-2. **File Analysis**: Fetches changed files and filters reviewable content
-3. **AI Review**: Sends code to Groq AI for analysis with structured prompts
-4. **Comment Generation**: Creates contextual comments with severity levels
-5. **Review Posting**: Posts comprehensive review back to GitHub PR
+### Core Workflow
 
-### Review Categories
+1. **🎣 Webhook Reception**: GitHub sends PR events to `/webhook` endpoint
+2. **🔐 Authentication Verification**: Validates webhook signature and creates GitHub App token
+3. **📁 File Discovery**: Fetches list of changed files from PR
+4. **🔍 Smart Filtering**: Filters files by type, size, and status (excludes removed files)
+5. **📄 Content Retrieval**: Fetches file contents with robust error handling:
+   - Primary: Use individual file SHA
+   - Fallback 1: Use PR head SHA (handles force-pushes)
+   - Fallback 2: Use PR branch reference
+6. **🤖 AI Analysis**: Sends code to Groq's LLaMA 3.3 70B model with structured prompts
+7. **📝 Review Generation**: Parses AI response and creates structured comments
+8. **💬 Comment Posting**: Posts line-specific comments and overall review to PR
 
-- 🐛 **Bugs**: Potential runtime errors and logical issues
-- 🔒 **Security**: Security vulnerabilities and concerns
-- ⚡ **Performance**: Performance bottlenecks and optimizations
-- 🎨 **Style**: Code style and formatting issues
-- ✅ **Best Practices**: Code quality and maintainability
+### Review Categories & Severity
 
-### Severity Levels
+| Category | Icon | Description | Triggers |
+|----------|------|-------------|----------|
+| **Bugs** | 🐛 | Potential runtime errors | `REQUEST_CHANGES` |
+| **Security** | 🔒 | Security vulnerabilities | `REQUEST_CHANGES` |
+| **Performance** | ⚡ | Performance bottlenecks | `COMMENT` |
+| **Style** | 🎨 | Code style issues | `COMMENT` |
+| **Best Practices** | ✅ | Code quality improvements | `COMMENT` |
 
-- 🔴 **High**: Critical issues requiring immediate attention
-- 🟡 **Medium**: Important issues that should be addressed
-- 🟢 **Low**: Minor improvements and suggestions
+| Severity | Icon | Action |
+|----------|------|--------|
+| **High** | 🔴 | Request changes |
+| **Medium** | 🟡 | Add comment |
+| **Low** | 🟢 | Add comment |
+
+### AI Prompt Structure
+
+The agent uses carefully crafted prompts that include:
+
+- **Context**: PR title, description, and file metadata
+- **Code Content**: Full file content with syntax highlighting
+- **Analysis Requirements**: 
+  - Overall assessment (APPROVE/REQUEST_CHANGES/COMMENT)
+  - Specific issues with line numbers
+  - Security concerns
+  - Performance considerations
+  - Improvement suggestions
+- **Response Format**: Structured JSON for consistent parsing
 
 ## 🔧 Development
 
@@ -153,21 +288,17 @@ The agent reviews these file types:
 # Install dependencies
 npm install
 
-# Start development server
+# Start development server with auto-reload
 npm run dev
 
 # Run tests
 npm test
-```
 
-### Docker Development
+# Test server functionality
+npm run test-server
 
-```bash
-# Build and run with Docker Compose
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
+# Validate environment configuration
+npm run validate
 ```
 
 ### Project Structure
@@ -175,89 +306,266 @@ docker-compose logs -f
 ```
 github-pr-review-agent/
 ├── src/
-│   ├── index.js              # Main application entry
+│   ├── index.js                 # Main application & webhook handler
 │   ├── services/
-│   │   ├── github.js         # GitHub API integration
-│   │   ├── groq.js           # Groq AI service
-│   │   └── review.js         # Review orchestration
+│   │   ├── github.js           # GitHub API integration & authentication
+│   │   ├── groq.js             # Groq AI service & prompt management  
+│   │   └── review.js           # Review orchestration & comment generation
 │   └── utils/
-│       └── logger.js         # Logging utility
+│       └── logger.js           # Logging utility with file/console output
 ├── scripts/
-│   └── setup-github-app.js   # Setup helper script  
-├── docs/
-│   └── DEPLOYMENT.md         # Deployment guide
-├── .github/workflows/        # CI/CD workflows
-├── Dockerfile               # Container configuration
-├── docker-compose.yml       # Local development setup
-└── app.json                # Heroku deployment config
+│   ├── setup-github-app.js     # GitHub App setup helper
+│   ├── validate-env.js         # Environment validation
+│   └── test-github-auth.js     # Authentication testing
+├── test/
+│   └── test-server.js          # Local testing utilities
+├── docs/                       # Deployment guides
+├── .github/workflows/          # CI/CD workflows
+├── Dockerfile                  # Container configuration
+├── docker-compose.yml          # Local development setup
+├── railway.json               # Railway deployment config
+├── render.yaml                # Render deployment config
+└── app.json                   # Heroku deployment config
+```
+
+### Testing
+
+```bash
+# Test GitHub authentication locally
+node scripts/test-github-auth.js
+
+# Test Groq API connection
+node -e "
+const { GroqService } = require('./src/services/groq');
+new GroqService().analyzeCode({filename: 'test.js', content: 'console.log(\"test\")'})
+  .then(result => console.log('✅ Groq test passed'))
+  .catch(err => console.error('❌ Groq test failed:', err));
+"
+
+# Validate all environment variables
+npm run validate
 ```
 
 ## 📚 API Endpoints
 
-- `GET /` - Application info and status
-- `GET /health` - Health check endpoint
-- `POST /webhook` - GitHub webhook handler
+| Endpoint | Method | Description | Response |
+|----------|--------|-------------|----------|
+| `/` | GET | Application info and status | JSON with app info |
+| `/health` | GET | Health check for monitoring | `200` (healthy) / `500` (unhealthy) |
+| `/webhook` | POST | GitHub webhook handler | `200` (processed) / `400` (invalid) |
 
-## 🔍 Monitoring
+### Health Check Response
 
-### Health Checks
+```json
+{
+  "status": "healthy",
+  "timestamp": "2025-01-26T10:30:00.000Z",
+  "uptime": 3600,
+  "version": "1.0.0"
+}
+```
 
-The application provides health monitoring:
-- **Health endpoint**: `GET /health`
-- **Status codes**: 200 (healthy), 500 (unhealthy)
-- **Response**: JSON with status and timestamp
+## 🔍 Monitoring & Debugging
 
-### Logging
+### Comprehensive Logging
 
-Logs are written to the `logs/` directory:
-- `all.log` - All log messages
-- `info.log` - Info level and above
-- `warn.log` - Warning level and above
-- `error.log` - Error messages only
+The application provides detailed logging at multiple levels:
 
-Set log level with `LOG_LEVEL` environment variable (error/warn/info/debug).
+```typescript
+// Log levels and what they capture
+ERROR: Authentication failures, API errors, critical issues
+WARN:  File fetch failures, parsing issues, non-critical problems  
+INFO:  PR processing, successful operations, status updates
+DEBUG: Detailed execution flow, variable values, timing info
+```
+
+### Log Output Locations
+
+- **Console**: All log levels (formatted for readability)
+- **File System**: Organized log files (when writable)
+  - `logs/error.log` - Error messages only
+  - `logs/warn.log` - Warning level and above
+  - `logs/info.log` - Info level and above  
+  - `logs/all.log` - All log messages
+- **Container Environments**: Graceful fallback to console-only logging
+
+### Debugging Workflow
+
+1. **Check Health Endpoint**: `GET /health` to verify service status
+2. **Review Recent Logs**: Check application logs for error patterns
+3. **Test Authentication**: Run `node scripts/test-github-auth.js` for GitHub issues
+4. **Validate Configuration**: Run `npm run validate` for environment issues
+5. **Monitor Webhooks**: Check GitHub App's "Advanced" tab for delivery status
+
+### Common Debug Scenarios
+
+**No reviews being posted?**
+- Check webhook deliveries in GitHub App settings
+- Verify app installation on target repositories
+- Confirm webhook URL is publicly accessible
+- Review authentication logs for token issues
+
+**Reviews failing for specific files?**
+- Check file size limits (`MAX_FILE_SIZE_KB`)
+- Verify file extensions are supported
+- Look for content fetch errors in logs
+- Test with simpler files first
+
+**AI analysis errors?**
+- Verify Groq API key and quota
+- Check for rate limiting in logs  
+- Test with smaller code snippets
+- Monitor API response times
+
+## 🚀 Deployment Guides
+
+### Railway (Recommended)
+
+Railway provides excellent support for Node.js applications with automatic deployments:
+
+1. **Connect Repository**: Link your GitHub repository
+2. **Set Environment Variables**: Add all required environment variables
+3. **Deploy**: Railway automatically detects and deploys the application
+4. **Configure Domain**: Set up custom domain or use Railway's provided URL
+
+**Railway-specific features:**
+- Automatic GitHub deployments
+- Built-in environment variable management
+- Persistent logging and metrics
+- Auto-scaling based on traffic
+
+### Render
+
+Render offers a generous free tier perfect for testing:
+
+1. **Create Web Service**: Connect your GitHub repository
+2. **Configure Build**: 
+   - Build Command: `npm install`
+   - Start Command: `npm start`
+3. **Set Environment Variables**: Add through Render dashboard
+4. **Deploy**: Render automatically builds and deploys
+
+### Heroku
+
+Classic platform with extensive add-on ecosystem:
+
+1. **Create App**: Use Heroku CLI or dashboard
+2. **Set Buildpack**: Node.js buildpack (auto-detected)
+3. **Configure Variables**: Set through CLI or dashboard
+4. **Deploy**: Push to Heroku git remote
+
+### Docker Deployment
+
+```bash
+# Build the container
+docker build -t pr-review-agent .
+
+# Run with environment variables
+docker run -d \
+  -p 3000:3000 \
+  -e GITHUB_APP_ID=your_app_id \
+  -e GITHUB_PRIVATE_KEY="$(cat private-key.pem)" \
+  -e GITHUB_WEBHOOK_SECRET=your_secret \
+  -e GROQ_API_KEY=your_groq_key \
+  pr-review-agent
+```
 
 ## 🤝 Contributing
 
-We welcome contributions! Please:
+We welcome contributions! Here's how to get started:
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+### Development Setup
+
+1. **Fork and Clone**
+   ```bash
+   git clone https://github.com/your-username/pr-review-agent.git
+   cd pr-review-agent
+   npm install
+   ```
+
+2. **Set Up Environment**
+   ```bash
+   cp .env.example .env
+   # Fill in your configuration values
+   ```
+
+3. **Run Tests**
+   ```bash
+   npm test
+   npm run validate
+   ```
+
+### Contribution Guidelines
+
+- **Code Style**: Follow existing patterns and use meaningful variable names
+- **Logging**: Add appropriate log statements for debugging
+- **Error Handling**: Include comprehensive error handling for external APIs
+- **Documentation**: Update README and code comments for new features
+- **Testing**: Test with real GitHub repositories and various file types
+
+### Pull Request Process
+
+1. Create a feature branch (`git checkout -b feature/amazing-feature`)
+2. Make your changes with appropriate tests
+3. Ensure all tests pass and linting is clean
+4. Update documentation for any new features
+5. Commit with clear, descriptive messages
+6. Push to your branch and create a Pull Request
 
 ## 🐛 Troubleshooting
 
-### Common Issues
+### Authentication Issues
 
-**Webhook not receiving events**
-- Verify webhook URL is accessible from the internet
-- Check webhook secret matches your configuration
-- Ensure the GitHub App is installed on your repositories
+**Problem**: `[@octokit/auth-token] Token passed to createTokenAuth is not a string`
+**Solution**: Ensure you're using `authStrategy: createAppAuth` in Octokit configuration
 
-**Authentication errors**
-- Verify GitHub App ID and private key are correct
-- Check app permissions include Contents (read) and Pull requests (write)
-- Ensure private key format includes proper newlines
+**Problem**: `Bad credentials` errors
+**Solution**: 
+- Verify GitHub App ID is correct (numeric)
+- Check private key format includes proper line breaks
+- Confirm app is installed on target repositories
 
-**Groq API errors**
-- Verify API key is valid and has credits
-- Check rate limits aren't exceeded
-- Ensure access to llama3-8b-8192 model
+**Problem**: `Installation not found`
+**Solution**: Install the GitHub App on your repositories through the GitHub interface
 
-**Reviews not posting**
-- Check GitHub App installation and permissions
-- Verify webhook events are being received
-- Review application logs for errors
+### File Processing Issues  
 
-### Getting Help
+**Problem**: `No commit found for the ref` errors
+**Solution**: The agent now handles this automatically with fallback strategies
 
-- Check the [Deployment Guide](docs/DEPLOYMENT.md) for detailed setup instructions
-- See [Railway Deployment Guide](docs/RAILWAY_DEPLOYMENT.md) for Railway-specific instructions
-- See [Render Deployment Guide](docs/RENDER_DEPLOYMENT.md) for Render-specific instructions
-- Review application logs in the `logs/` directory
-- Open an issue on GitHub for bugs or feature requests
+**Problem**: No files being reviewed despite PR having changes
+**Solution**: 
+- Check if files have supported extensions
+- Verify files aren't exceeding size limits
+- Check file status (removed files are skipped)
+
+### API Issues
+
+**Problem**: Groq API timeout or rate limit errors
+**Solution**:
+- Increase `REVIEW_TIMEOUT_MS` for larger files
+- Check Groq API quota and usage
+- Consider upgrading Groq plan for higher limits
+
+**Problem**: Webhook signature verification failures
+**Solution**:
+- Verify `GITHUB_WEBHOOK_SECRET` matches GitHub App configuration
+- Check webhook URL is correct and accessible
+- Ensure raw body is used for signature verification
+
+### Performance Issues
+
+**Problem**: Reviews taking too long
+**Solution**:
+- Reduce `MAX_FILES_TO_REVIEW` limit
+- Decrease `MAX_FILE_SIZE_KB` limit  
+- Check network connectivity to APIs
+
+**Problem**: Memory issues with large files
+**Solution**:
+- Lower file size limits
+- Implement streaming for large file processing
+- Monitor container memory usage
 
 ## 📄 License
 
@@ -265,12 +573,24 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- [Groq](https://groq.com/) for providing fast AI inference
-- [Octokit](https://octokit.github.io/) for GitHub API integration
-- [CodeRabbit](https://coderabbit.ai/) for inspiration
+- **[Groq](https://groq.com/)** - For providing fast AI inference with LLaMA models
+- **[Octokit](https://octokit.github.io/)** - For excellent GitHub API integration
+- **[CodeRabbit](https://coderabbit.ai/)** - For inspiration and reference
+- **Open Source Community** - For tools, libraries, and continuous improvement
+
+## 🌟 Star History
+
+If you find this project useful, please consider giving it a star! ⭐
+
+## 🔗 Related Projects
+
+- [CodeRabbit](https://coderabbit.ai/) - Commercial AI code review service
+- [GitHub Copilot](https://github.com/features/copilot) - AI-powered coding assistant
+- [SonarQube](https://www.sonarqube.org/) - Code quality and security analysis
+- [ReviewBot](https://www.reviewbot.io/) - Automated code review tools
 
 ---
 
 **Made with ❤️ for the developer community**
 
-*Star ⭐ this repo if you find it useful!*
+*Deploy your own instance today and experience AI-powered code reviews!*

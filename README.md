@@ -2,7 +2,33 @@
 
 An automated GitHub PR review agent powered by Groq AI that provides intelligent code reviews as soon as pull requests are created or updated. Built to work like CodeRabbit, but **free and self-hosted**.
 
+[![CI Pipeline](https://github.com/kuldeep27396/pr-review-agent/actions/workflows/deploy.yml/badge.svg)](https://github.com/kuldeep27396/pr-review-agent/actions/workflows/deploy.yml)
+[![Test Status](https://github.com/kuldeep27396/pr-review-agent/actions/workflows/test.yml/badge.svg)](https://github.com/kuldeep27396/pr-review-agent/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org/)
+[![Railway](https://img.shields.io/badge/Deployed%20on-Railway-blueviolet)](https://railway.app/)
+
 [![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template?template=https://github.com/kuldeep27396/pr-review-agent)
+
+![GitHub Stars](https://img.shields.io/github/stars/kuldeep27396/pr-review-agent?style=social)
+![GitHub Forks](https://img.shields.io/github/forks/kuldeep27396/pr-review-agent?style=social)
+![GitHub Issues](https://img.shields.io/github/issues/kuldeep27396/pr-review-agent)
+![GitHub Pull Requests](https://img.shields.io/github/issues-pr/kuldeep27396/pr-review-agent)
+![Last Commit](https://img.shields.io/github/last-commit/kuldeep27396/pr-review-agent)
+![Repo Size](https://img.shields.io/github/repo-size/kuldeep27396/pr-review-agent)
+
+### 🛠️ Technology Stack
+[![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=flat&logo=javascript&logoColor=black)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
+[![Node.js](https://img.shields.io/badge/Node.js-43853D?style=flat&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Express.js](https://img.shields.io/badge/Express.js-404D59?style=flat&logo=express&logoColor=white)](https://expressjs.com/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
+[![GitHub](https://img.shields.io/badge/GitHub-100000?style=flat&logo=github&logoColor=white)](https://github.com/)
+[![Groq](https://img.shields.io/badge/Groq-FF6B35?style=flat&logo=ai&logoColor=white)](https://groq.com/)
+
+### 📊 Project Stats
+[![Languages](https://img.shields.io/github/languages/count/kuldeep27396/pr-review-agent)](https://github.com/kuldeep27396/pr-review-agent)
+[![Top Language](https://img.shields.io/github/languages/top/kuldeep27396/pr-review-agent)](https://github.com/kuldeep27396/pr-review-agent)
+[![Code Size](https://img.shields.io/github/languages/code-size/kuldeep27396/pr-review-agent)](https://github.com/kuldeep27396/pr-review-agent)
 
 ## ✨ Features
 

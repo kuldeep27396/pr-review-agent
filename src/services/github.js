@@ -28,70 +28,30 @@ class GitHubService {
     try {
       logger.info(`🔑 Creating GitHub App auth for installation: ${installationId}`);
       
-      // Test if we can create the auth object
-      const auth = createAppAuth({
-        appId: parseInt(this.appId), // Ensure it's a number
-        privateKey: this.privateKey.replace(/\\n/g, '\n'), // Handle escaped newlines
-        installationId: parseInt(installationId), // Ensure it's a number
+      // Create Octokit with App authentication directly
+      const octokit = new Octokit({
+        authStrategy: createAppAuth,
+        auth: {
+          appId: parseInt(this.appId),
+          privateKey: this.privateKey.replace(/\\n/g, '\n'),
+          installationId: parseInt(installationId),
+        },
       });
       
       logger.info(`🔍 Auth config - App ID: ${parseInt(this.appId)}, Installation ID: ${parseInt(installationId)}`);
-
-      logger.info('✅ GitHub App auth created successfully');
-      
-      // Try using the auth object directly instead of extracting token
-      logger.info('🔍 Creating Octokit with auth object...');
-      let octokit;
-      try {
-        octokit = new Octokit({
-          auth,
-        });
-        logger.info('✅ Octokit instance created successfully');
-      } catch (octokitError) {
-        logger.error('❌ Failed to create Octokit instance:');
-        logger.error(`Octokit Error: ${octokitError.message}`);
-        logger.error(`Octokit Stack: ${octokitError.stack}`);
-        throw octokitError;
-      }
-      
-      // Also try manual token approach for comparison
-      logger.info('🔍 Getting installation token for debugging...');
-      try {
-        const { token } = await auth({ type: 'installation' });
-        logger.info(`✅ Installation token obtained: ${token.substring(0, 20)}...`);
-        logger.info(`🔍 Token type: ${typeof token}`);
-        logger.info(`🔍 Token length: ${token.length}`);
-        logger.info(`🔍 Token ends with: ...${token.substring(token.length - 10)}`);
-        
-        // Validate token format
-        if (typeof token !== 'string' || !token.startsWith('ghs_')) {
-          logger.error(`❌ Invalid token format. Expected string starting with 'ghs_', got: ${typeof token} - ${token.substring(0, 50)}`);
-        } else {
-          logger.info('✅ Token format validation passed');
-        }
-      } catch (tokenError) {
-        logger.error('❌ Token extraction failed:', tokenError.message);
-      }
+      logger.info('✅ Octokit instance created with App authentication');
 
       // Test the authentication by getting installation info
       logger.info('🧪 Testing GitHub authentication...');
       logger.info(`🔍 Making API call to get installation ${installationId}...`);
       
-      try {
-        const installation = await octokit.rest.apps.getInstallation({
-          installation_id: installationId,
-        });
-        logger.info(`✅ Installation retrieved: ${installation.data.account.login}`);
-      } catch (apiError) {
-        logger.error('❌ API call failed:');
-        logger.error(`API Error name: ${apiError.name}`);
-        logger.error(`API Error message: ${apiError.message}`);
-        logger.error(`API Error status: ${apiError.status}`);
-        logger.error(`API Error headers: ${JSON.stringify(apiError.response?.headers || {})}`);
-        throw apiError;
-      }
+      const installation = await octokit.rest.apps.getInstallation({
+        installation_id: parseInt(installationId),
+      });
       
+      logger.info(`✅ Installation retrieved: ${installation.data.account.login}`);
       logger.info('✅ GitHub authentication successful');
+      
       return octokit;
 
     } catch (error) {
@@ -100,6 +60,7 @@ class GitHubService {
       logger.error(`Installation ID: ${installationId}`);
       logger.error(`Private Key length: ${this.privateKey.length}`);
       logger.error(`Private Key starts with: ${this.privateKey.substring(0, 50)}...`);
+      logger.error(`Error: ${error.message}`);
       
       if (error.message.includes('PEM')) {
         logger.error('🔑 Private key format issue detected');
@@ -109,6 +70,11 @@ class GitHubService {
       if (error.message.includes('installation')) {
         logger.error('🏠 Installation issue detected');
         logger.error('Make sure the GitHub App is installed on the repository');
+      }
+      
+      if (error.message.includes('Bad credentials')) {
+        logger.error('🔐 Credentials issue detected');
+        logger.error('Verify App ID and Private Key are correct');
       }
       
       throw error;

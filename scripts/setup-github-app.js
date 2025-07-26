@@ -18,6 +18,7 @@ async function setupGitHubApp() {
   
   console.log('First, create a GitHub App at: https://github.com/settings/apps/new');
   console.log('Use these settings:');
+  console.log('Use these settings:');
   console.log('- App name: Your unique app name');
   console.log('- Homepage URL: Your deployment URL or GitHub repo');
   console.log('- Webhook URL: https://your-domain.com/webhook');

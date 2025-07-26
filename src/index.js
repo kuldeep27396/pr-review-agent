@@ -23,6 +23,7 @@ if (missingEnvVars.length > 0) {
     console.error(`   - ${envVar}`);
   });
   console.error('\n📖 Please check the deployment documentation:');
+  console.error('\n📖 Please check the deployment documentation:');
   console.error('   - README.md for setup instructions');
   console.error('   - docs/RAILWAY_DEPLOYMENT.md for Railway-specific setup');
   console.error('\n💡 Make sure to set all required environment variables in your deployment platform.');

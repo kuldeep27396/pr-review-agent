@@ -10,18 +10,53 @@ class GitHubService {
     if (!this.appId || !this.privateKey) {
       throw new Error('GitHub App ID and Private Key are required');
     }
+
+    // Validate App ID is numeric
+    if (!/^\d+$/.test(this.appId)) {
+      throw new Error(`Invalid GitHub App ID format: ${this.appId}. Should be numeric.`);
+    }
+
+    // Validate Private Key format
+    if (!this.privateKey.includes('BEGIN') || !this.privateKey.includes('END')) {
+      throw new Error('Invalid GitHub Private Key format. Should be a PEM format key.');
+    }
+
+    logger.info(`🔧 GitHub App initialized with ID: ${this.appId}`);
   }
 
   async getInstallationOctokit(installationId) {
-    const auth = createAppAuth({
-      appId: this.appId,
-      privateKey: this.privateKey,
-      installationId: installationId,
-    });
+    try {
+      logger.info(`🔑 Creating GitHub App auth for installation: ${installationId}`);
+      
+      const auth = createAppAuth({
+        appId: parseInt(this.appId), // Ensure it's a number
+        privateKey: this.privateKey.replace(/\\n/g, '\n'), // Handle escaped newlines
+        installationId: installationId,
+      });
 
-    return new Octokit({
-      auth,
-    });
+      logger.info('✅ GitHub App auth created successfully');
+      
+      const octokit = new Octokit({
+        auth,
+      });
+
+      // Test the authentication by getting installation info
+      logger.info('🧪 Testing GitHub authentication...');
+      await octokit.rest.apps.getInstallation({
+        installation_id: installationId,
+      });
+      
+      logger.info('✅ GitHub authentication successful');
+      return octokit;
+
+    } catch (error) {
+      logger.error('❌ GitHub authentication failed:');
+      logger.error(`App ID: ${this.appId}`);
+      logger.error(`Installation ID: ${installationId}`);
+      logger.error(`Private Key length: ${this.privateKey.length}`);
+      logger.error(`Private Key starts with: ${this.privateKey.substring(0, 50)}...`);
+      throw error;
+    }
   }
 
   async getPRFiles(octokit, owner, repo, prNumber) {

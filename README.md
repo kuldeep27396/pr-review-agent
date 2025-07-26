@@ -330,8 +330,7 @@ github-pr-review-agent/
 ├── Dockerfile                  # Container configuration
 ├── docker-compose.yml          # Local development setup
 ├── railway.json               # Railway deployment config
-├── render.yaml                # Render deployment config
-└── app.json                   # Heroku deployment config
+└── render.yaml                # Render deployment config (legacy)
 ```
 
 ### Testing
@@ -461,7 +460,7 @@ DEBUG: Detailed execution flow, variable values, timing info
 
 ### Alternative Deployment (Docker)
 
-If you prefer Docker deployment on any platform:
+If you prefer Docker deployment on any other platform:
 
 ```bash
 # Build the container
@@ -476,6 +475,8 @@ docker run -d \
   -e GROQ_API_KEY=your_groq_key \
   pr-review-agent
 ```
+
+**Note**: Railway is the recommended and tested deployment platform for this project.
 
 ## 🤝 Contributing
 

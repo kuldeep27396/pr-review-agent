@@ -32,7 +32,7 @@ class GroqService {
               content: prompt
             }
           ],
-          model: "llama3-8b-8192",
+          model: "llama-3.3-70b-versatile",
           temperature: 0.1,
           max_tokens: 1000,
         }),
@@ -158,7 +158,7 @@ Provide a concise overall assessment and summary of the main points to address.`
             content: summaryPrompt
           }
         ],
-        model: "llama3-8b-8192",
+        model: "llama-3.3-70b-versatile",
         temperature: 0.1,
         max_tokens: 500,
       });

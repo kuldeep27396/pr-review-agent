@@ -7,7 +7,7 @@ const GitHubService = require('./services/github');
 const ReviewService = require('./services/review');
 const { logger } = require('./utils/logger');
 
-// Validate required environment variables
+// Validate required environment variablesssss
 const requiredEnvVars = [
   'GITHUB_APP_ID',
   'GITHUB_PRIVATE_KEY', 

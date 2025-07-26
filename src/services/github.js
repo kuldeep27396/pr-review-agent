@@ -83,11 +83,20 @@ class GitHubService {
 
   async getPRFiles(octokit, owner, repo, prNumber) {
     try {
+      // First get PR details to get the head SHA
+      const { data: pr } = await octokit.rest.pulls.get({
+        owner,
+        repo,
+        pull_number: prNumber,
+      });
+
       const { data: files } = await octokit.rest.pulls.listFiles({
         owner,
         repo,
         pull_number: prNumber,
       });
+
+      logger.info(`📊 PR #${prNumber} has ${files.length} changed files`);
 
       const maxFiles = parseInt(process.env.MAX_FILES_TO_REVIEW) || 10;
       const maxFileSize = (parseInt(process.env.MAX_FILE_SIZE_KB) || 100) * 1024;
@@ -100,15 +109,20 @@ class GitHubService {
         })
         .slice(0, maxFiles);
 
+      logger.info(`🔍 Found ${filteredFiles.length} reviewable files after filtering`);
+
       const filesWithContent = await Promise.all(
         filteredFiles.map(async (file) => {
           try {
+            // Use PR head SHA instead of individual file SHA for better reliability
             const { data: content } = await octokit.rest.repos.getContent({
               owner,
               repo,
               path: file.filename,
-              ref: file.sha,
+              ref: pr.head.sha,
             });
+
+            logger.info(`✅ Fetched content for ${file.filename} (${content.size} bytes)`);
 
             return {
               ...file,
@@ -116,15 +130,37 @@ class GitHubService {
             };
           } catch (error) {
             logger.warn(`Could not fetch content for ${file.filename}:`, error.message);
-            return {
-              ...file,
-              content: null,
-            };
+            
+            // Try fallback: fetch from PR head branch name
+            try {
+              const { data: content } = await octokit.rest.repos.getContent({
+                owner,
+                repo,
+                path: file.filename,
+                ref: pr.head.ref,
+              });
+              
+              logger.info(`✅ Fetched content for ${file.filename} using branch ref (${content.size} bytes)`);
+              
+              return {
+                ...file,
+                content: Buffer.from(content.content, 'base64').toString('utf-8'),
+              };
+            } catch (fallbackError) {
+              logger.warn(`Fallback also failed for ${file.filename}:`, fallbackError.message);
+              return {
+                ...file,
+                content: null,
+              };
+            }
           }
         })
       );
 
-      return filesWithContent.filter(file => file.content !== null);
+      const validFiles = filesWithContent.filter(file => file.content !== null);
+      logger.info(`📝 Successfully fetched content for ${validFiles.length} files`);
+      
+      return validFiles;
     } catch (error) {
       logger.error('Error fetching PR files:', error);
       throw error;

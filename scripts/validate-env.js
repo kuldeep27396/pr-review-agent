@@ -2,7 +2,7 @@
 
 require('dotenv').config();
 
-console.log('🔍 GitHub PR Review Agent - Environment Validation\n');
+console.log('🔍 GitHub PR Review Agent - Environment Validationnnnnn\n');
 
 const requiredEnvVars = [
   {

@@ -32,16 +32,27 @@ class GitHubService {
       const auth = createAppAuth({
         appId: parseInt(this.appId), // Ensure it's a number
         privateKey: this.privateKey.replace(/\\n/g, '\n'), // Handle escaped newlines
-        installationId: installationId,
+        installationId: parseInt(installationId), // Ensure it's a number
       });
+      
+      logger.info(`🔍 Auth config - App ID: ${parseInt(this.appId)}, Installation ID: ${parseInt(installationId)}`);
 
       logger.info('✅ GitHub App auth created successfully');
       
       // Try using the auth object directly instead of extracting token
       logger.info('🔍 Creating Octokit with auth object...');
-      const octokit = new Octokit({
-        auth,
-      });
+      let octokit;
+      try {
+        octokit = new Octokit({
+          auth,
+        });
+        logger.info('✅ Octokit instance created successfully');
+      } catch (octokitError) {
+        logger.error('❌ Failed to create Octokit instance:');
+        logger.error(`Octokit Error: ${octokitError.message}`);
+        logger.error(`Octokit Stack: ${octokitError.stack}`);
+        throw octokitError;
+      }
       
       // Also try manual token approach for comparison
       logger.info('🔍 Getting installation token for debugging...');

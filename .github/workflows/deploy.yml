@@ -1,4 +1,4 @@
-name: Deploy to Production
+name: CI Pipeline
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy:
+  test:
     runs-on: ubuntu-latest
     
     steps:
@@ -25,12 +25,6 @@ jobs:
       run: npm test
       continue-on-error: true
     
-    - name: Deploy to Heroku
-      uses: akhileshns/heroku-deploy@v3.12.14
-      with:
-        heroku_api_key: ${{secrets.HEROKU_API_KEY}}
-        heroku_app_name: ${{secrets.HEROKU_APP_NAME}}
-        heroku_email: ${{secrets.HEROKU_EMAIL}}
-        dockerfile_path: "./Dockerfile"
-        dockerfile_directory: "."
-        usedocker: true
+    - name: Validate environment setup
+      run: npm run validate
+      continue-on-error: true

@@ -29,19 +29,21 @@ class ReviewService {
         return null;
       }
 
-      const overallSummary = await this.groqService.generateOverallSummary(validAnalyses, pullRequest);
-
       const comments = this.generateComments(validAnalyses);
+
+      // If no line-specific comments could be made, include issues in summary
+      const skippedIssues = this.getSkippedIssues(validAnalyses, comments);
+      const enhancedSummary = await this.generateEnhancedSummary(validAnalyses, pullRequest, skippedIssues);
 
       const overallAssessment = this.determineOverallAssessment(validAnalyses);
 
       return {
         event: overallAssessment,
-        summary: overallSummary,
+        summary: enhancedSummary,
         comments: comments,
         fileCount: files.length,
         reviewedCount: validAnalyses.length,
-        totalIssues: comments.length
+        totalIssues: comments.length + skippedIssues.length
       };
 
     } catch (error) {
@@ -55,9 +57,19 @@ class ReviewService {
 
     analyses.forEach(analysis => {
       if (analysis.issues && analysis.issues.length > 0) {
+        // Extract valid line numbers from the diff if available
+        const validLines = this.extractDiffLines(analysis);
+        
         analysis.issues.forEach(issue => {
           const severity = this.getSeverityEmoji(issue.severity);
           const type = this.getTypeEmoji(issue.type);
+          
+          // Only include comments for lines that are part of the diff
+          // If no valid lines found or line is not in diff, skip line-specific comment
+          if (validLines.length === 0 || !validLines.includes(issue.line)) {
+            logger.warn(`Skipping line-specific comment for ${analysis.file}:${issue.line} - not in diff`);
+            return; // Skip this comment
+          }
           
           const comment = {
             path: analysis.file,
@@ -71,6 +83,37 @@ class ReviewService {
     });
 
     return comments;
+  }
+
+  extractDiffLines(analysis) {
+    // Extract line numbers from patch/diff information
+    if (!analysis.patch) {
+      return [];
+    }
+
+    const lines = [];
+    const patchLines = analysis.patch.split('\n');
+    let currentLine = 0;
+
+    for (const line of patchLines) {
+      // Parse diff hunk headers like @@ -1,7 +1,8 @@
+      const hunkMatch = line.match(/^@@\s+-\d+(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@/);
+      if (hunkMatch) {
+        currentLine = parseInt(hunkMatch[1]);
+        continue;
+      }
+
+      // Track line numbers for added/modified lines (+ prefix) and context lines (space prefix)
+      if (line.startsWith('+') || line.startsWith(' ')) {
+        if (!line.startsWith('+++')) { // Skip file headers
+          lines.push(currentLine);
+        }
+        currentLine++;
+      }
+      // For deleted lines (-), don't increment currentLine as they don't exist in new version
+    }
+
+    return lines;
   }
 
   determineOverallAssessment(analyses) {
@@ -117,6 +160,43 @@ class ReviewService {
       case 'best-practice': return '✅';
       default: return '💭';
     }
+  }
+
+  getSkippedIssues(analyses, postedComments) {
+    const skippedIssues = [];
+    const postedLines = new Set(postedComments.map(c => `${c.path}:${c.line}`));
+
+    analyses.forEach(analysis => {
+      if (analysis.issues && analysis.issues.length > 0) {
+        analysis.issues.forEach(issue => {
+          const issueKey = `${analysis.file}:${issue.line}`;
+          if (!postedLines.has(issueKey)) {
+            skippedIssues.push({
+              ...issue,
+              file: analysis.file
+            });
+          }
+        });
+      }
+    });
+
+    return skippedIssues;
+  }
+
+  async generateEnhancedSummary(analyses, pullRequest, skippedIssues) {
+    let baseSummary = await this.groqService.generateOverallSummary(analyses, pullRequest);
+
+    if (skippedIssues.length > 0) {
+      const skippedSummary = skippedIssues.map(issue => {
+        const severity = this.getSeverityEmoji(issue.severity);
+        const type = this.getTypeEmoji(issue.type);
+        return `${severity} ${type} **${issue.file}:${issue.line}** - ${issue.message}`;
+      }).join('\n');
+
+      baseSummary += `\n\n**Additional Issues Found:**\n${skippedSummary}\n\n*Note: Some issues couldn't be posted as line-specific comments because they reference lines not in the diff.*`;
+    }
+
+    return baseSummary;
   }
 }
 

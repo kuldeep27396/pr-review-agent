@@ -88,12 +88,12 @@ ${file.content}
 
 Please provide:
 1. Overall assessment (APPROVE, REQUEST_CHANGES, or COMMENT)
-2. Specific issues found with line numbers (use line numbers from the actual file content)
+2. Specific issues found with line numbers (IMPORTANT: Only reference line numbers that appear in the diff/changes, not the entire file)
 3. Suggestions for improvement
 4. Security concerns if any
 5. Performance considerations
 
-${file.status === 'modified' ? 'Pay special attention to the changes made and their impact on the existing code.' : ''}
+${file.status === 'modified' ? 'CRITICAL: For modified files, only comment on lines that were actually changed (marked with + in the diff). Do not comment on unchanged context lines.' : 'For new files, you can comment on any line, but focus on the most important issues.'}
 
 Format your response as JSON with this structure:
 {

@@ -118,7 +118,7 @@ async function handlePullRequest(payload) {
       return;
     }
     
-    logger.info('🤖 Starting AI review...');
+    logger.info('🤖 Starting AI review now ');
     const review = await reviewService.reviewPR(files, pull_request);
     
     if (review && review.comments && review.comments.length > 0) {

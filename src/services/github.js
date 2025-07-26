@@ -41,6 +41,15 @@ class GitHubService {
       logger.info('🔍 Getting installation token...');
       const { token } = await auth({ type: 'installation' });
       logger.info(`✅ Installation token obtained: ${token.substring(0, 20)}...`);
+      logger.info(`🔍 Token type: ${typeof token}`);
+      logger.info(`🔍 Token length: ${token.length}`);
+      logger.info(`🔍 Token ends with: ...${token.substring(token.length - 10)}`);
+      
+      // Validate token format
+      if (typeof token !== 'string' || !token.startsWith('ghs_')) {
+        logger.error(`❌ Invalid token format. Expected string starting with 'ghs_', got: ${typeof token} - ${token.substring(0, 50)}`);
+        throw new Error('Invalid installation token format');
+      }
       
       // Create Octokit with the token directly
       const octokit = new Octokit({
@@ -49,9 +58,21 @@ class GitHubService {
 
       // Test the authentication by getting installation info
       logger.info('🧪 Testing GitHub authentication...');
-      await octokit.rest.apps.getInstallation({
-        installation_id: installationId,
-      });
+      logger.info(`🔍 Making API call to get installation ${installationId}...`);
+      
+      try {
+        const installation = await octokit.rest.apps.getInstallation({
+          installation_id: installationId,
+        });
+        logger.info(`✅ Installation retrieved: ${installation.data.account.login}`);
+      } catch (apiError) {
+        logger.error('❌ API call failed:');
+        logger.error(`API Error name: ${apiError.name}`);
+        logger.error(`API Error message: ${apiError.message}`);
+        logger.error(`API Error status: ${apiError.status}`);
+        logger.error(`API Error headers: ${JSON.stringify(apiError.response?.headers || {})}`);
+        throw apiError;
+      }
       
       logger.info('✅ GitHub authentication successful');
       return octokit;

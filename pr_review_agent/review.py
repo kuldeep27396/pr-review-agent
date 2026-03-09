@@ -1,0 +1,453 @@
+from __future__ import annotations
+
+import asyncio
+import json
+import re
+from typing import TYPE_CHECKING, Any
+
+from pr_review_agent.config import Settings
+from pr_review_agent.models import ChangedFile, FileReview, PullRequestContext, ReviewComment, ReviewCommentContext, ReviewIssue, ReviewOutput
+
+if TYPE_CHECKING:
+    from pr_review_agent.llm import LLMClient
+
+
+REVIEW_SYSTEM_PROMPT = """
+You are an expert code reviewer.
+Focus on correctness, security, performance, maintainability, and regression risk.
+Ignore minor style feedback unless it materially affects readability or correctness.
+Return valid JSON only.
+""".strip()
+
+SUMMARY_SYSTEM_PROMPT = """
+You summarize pull request reviews for GitHub.
+Be factual, concise, and action-oriented.
+Return markdown only.
+""".strip()
+
+
+class ReviewService:
+    def __init__(self, settings: Settings, llm_client: LLMClient, logger: Any) -> None:
+        self.settings = settings
+        self.llm_client = llm_client
+        self.logger = logger
+
+    async def review_pull_request(
+        self,
+        files: list[ChangedFile],
+        pull_request: PullRequestContext,
+    ) -> ReviewOutput | None:
+        if not files:
+            return None
+
+        semaphore = asyncio.Semaphore(self.settings.request_parallelism)
+
+        async def review_file(file: ChangedFile) -> FileReview:
+            async with semaphore:
+                try:
+                    return await self._review_file(file, pull_request)
+                except Exception:
+                    self.logger.exception("File review failed path=%s", file.path)
+                    return FileReview(
+                        path=file.path,
+                        assessment="COMMENT",
+                        summary="Automated analysis failed for this file due to an upstream provider error.",
+                        issues=[],
+                        patch=file.patch,
+                        errored=True,
+                    )
+
+        analyses = await asyncio.gather(*(review_file(file) for file in files))
+        active_analyses = [analysis for analysis in analyses if not analysis.skipped]
+
+        if not active_analyses and not self.settings.post_review_summary:
+            return None
+
+        comments, overflow_issues = self._build_inline_comments(active_analyses)
+        summary = await self._build_summary(active_analyses, pull_request, overflow_issues, comments)
+        return ReviewOutput(
+            event=self._determine_event(active_analyses),
+            body=summary,
+            comments=comments,
+            analyses=analyses,
+        )
+
+    async def _review_file(self, file: ChangedFile, pull_request: PullRequestContext) -> FileReview:
+        if self._should_skip_simple_change(file):
+            return FileReview(
+                path=file.path,
+                assessment="COMMENT",
+                summary="Skipped trivial change",
+                skipped=True,
+                skip_reason="trivial change",
+                patch=file.patch,
+            )
+
+        prompt = self._build_review_prompt(file, pull_request)
+        content = await self.llm_client.chat(
+            messages=[
+                {"role": "system", "content": REVIEW_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            model=self.settings.review_model,
+            fallback_model=self.settings.resolved_fallback_review_model,
+            max_tokens=1200,
+        )
+        return self._parse_review_response(content, file)
+
+    def _build_review_prompt(self, file: ChangedFile, pull_request: PullRequestContext) -> str:
+        truncated_patch = file.patch[: self.settings.max_patch_chars]
+        truncated_content = file.content[: self.settings.max_file_context_chars]
+        return f"""
+Review this pull request change.
+
+PR title: {pull_request.title}
+PR description:
+{pull_request.body or "No description provided"}
+
+File: {file.path}
+Status: {file.status}
+Additions: {file.additions}
+Deletions: {file.deletions}
+
+Rules:
+- Focus on the changed code, not the entire repository.
+- For modified files, only report inline issues on added lines in the diff.
+- Avoid low-value praise and cosmetic comments.
+- Report at most 3 meaningful issues.
+
+Unified diff:
+```diff
+{truncated_patch or "Patch unavailable"}
+```
+
+Current file content:
+```text
+{truncated_content or "Content unavailable"}
+```
+
+Return JSON using this schema:
+{{
+  "assessment": "APPROVE|COMMENT|REQUEST_CHANGES",
+  "summary": "short summary",
+  "issues": [
+    {{
+      "line": 12,
+      "type": "bug|security|performance|maintainability|best-practice",
+      "severity": "high|medium|low",
+      "message": "issue description",
+      "suggestion": "specific fix"
+    }}
+  ]
+}}
+""".strip()
+
+    def _parse_review_response(self, response_text: str, file: ChangedFile) -> FileReview:
+        raw_json = self._extract_json_block(response_text)
+        if not raw_json:
+            return FileReview(
+                path=file.path,
+                assessment="COMMENT",
+                summary=response_text.strip() or "Review completed.",
+                issues=[],
+                patch=file.patch,
+            )
+
+        try:
+            data = json.loads(raw_json)
+        except json.JSONDecodeError:
+            return FileReview(
+                path=file.path,
+                assessment="COMMENT",
+                summary=response_text.strip() or "Review completed.",
+                issues=[],
+                patch=file.patch,
+            )
+
+        issues = []
+        for issue in data.get("issues", [])[:3]:
+            issues.append(
+                ReviewIssue(
+                    line=max(1, int(issue.get("line", 1))),
+                    issue_type=str(issue.get("type", "best-practice")).strip().lower(),
+                    severity=str(issue.get("severity", "medium")).strip().lower(),
+                    message=str(issue.get("message", "")).strip(),
+                    suggestion=str(issue.get("suggestion", "")).strip(),
+                )
+            )
+
+        return FileReview(
+            path=file.path,
+            assessment=str(data.get("assessment", "COMMENT")).strip().upper(),
+            summary=str(data.get("summary", "Review completed.")).strip(),
+            issues=[issue for issue in issues if issue.message],
+            patch=file.patch,
+        )
+
+    async def _build_summary(
+        self,
+        analyses: list[FileReview],
+        pull_request: PullRequestContext,
+        overflow_issues: list[tuple[str, ReviewIssue]],
+        comments: list[ReviewComment],
+    ) -> str:
+        if not analyses:
+            return (
+                "## PR Review\n\n"
+                "No substantive files were reviewed. The changes were either filtered out or skipped as trivial."
+            )
+
+        issue_count = sum(len(analysis.issues) for analysis in analyses)
+        facts = "\n".join(
+            [
+                f"- {analysis.path}: {analysis.assessment} | {analysis.summary}"
+                for analysis in analyses
+            ]
+        )
+        overflow = "\n".join(
+            [
+                f"- {path}:{issue.line} [{issue.severity}/{issue.issue_type}] {issue.message}"
+                for path, issue in overflow_issues
+            ]
+        )
+
+        test_plan_instruction = "- a short test plan section" if self.settings.enable_test_plan else ""
+        prompt = f"""
+Summarize this pull request review as markdown.
+
+PR title: {pull_request.title}
+PR URL: {pull_request.html_url}
+Files reviewed: {len(analyses)}
+Inline comments posted: {len(comments)}
+Total issues found: {issue_count}
+
+Per-file review results:
+{facts}
+
+Issues not posted inline:
+{overflow or "- none"}
+
+Write:
+- a one-line verdict
+- a short bullet list of key risks
+- a short bullet list of file summaries
+{test_plan_instruction}
+""".strip()
+
+        try:
+            return await self.llm_client.chat(
+                messages=[
+                    {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                model=self.settings.resolved_summary_model,
+                fallback_model=self.settings.resolved_fallback_summary_model,
+                max_tokens=700,
+                temperature=0.0,
+            )
+        except Exception:
+            self.logger.exception("Falling back to local summary generation")
+            return self._fallback_summary(analyses, overflow_issues, comments)
+
+    def _fallback_summary(
+        self,
+        analyses: list[FileReview],
+        overflow_issues: list[tuple[str, ReviewIssue]],
+        comments: list[ReviewComment],
+    ) -> str:
+        high_risk = [
+            issue
+            for analysis in analyses
+            for issue in analysis.issues
+            if issue.severity == "high"
+        ]
+        lines = [
+            "## PR Review",
+            "",
+            f"Verdict: **{self._determine_event(analyses)}**",
+            "",
+            f"- Files reviewed: {len(analyses)}",
+            f"- Inline comments posted: {len(comments)}",
+            f"- High-severity issues: {len(high_risk)}",
+            "",
+            "### File summaries",
+        ]
+        lines.extend(f"- `{analysis.path}`: {analysis.summary}" for analysis in analyses[:10])
+        if self.settings.enable_test_plan:
+            lines.extend(["", "### Suggested test plan"])
+            lines.extend(self._build_test_plan(analyses))
+        if overflow_issues:
+            lines.extend(["", "### Additional issues"])
+            lines.extend(
+                f"- `{path}:{issue.line}` [{issue.severity}/{issue.issue_type}] {issue.message}"
+                for path, issue in overflow_issues[:10]
+            )
+        return "\n".join(lines)
+
+    def _build_test_plan(self, analyses: list[FileReview]) -> list[str]:
+        focus_areas: list[str] = []
+        for analysis in analyses:
+            for issue in analysis.issues:
+                if issue.issue_type == "security":
+                    focus_areas.append("- Exercise authorization, validation, and failure-path tests for the touched code.")
+                elif issue.issue_type == "performance":
+                    focus_areas.append("- Run a before/after benchmark around the changed hot path.")
+                elif issue.issue_type == "bug":
+                    focus_areas.append("- Add regression coverage for the changed branch conditions and edge cases.")
+        if not focus_areas:
+            focus_areas.append("- Run targeted tests for the touched files and a smoke test of the main user flow.")
+        deduped: list[str] = []
+        for item in focus_areas:
+            if item not in deduped:
+                deduped.append(item)
+        return deduped[:4]
+
+    def _build_inline_comments(
+        self,
+        analyses: list[FileReview],
+    ) -> tuple[list[ReviewComment], list[tuple[str, ReviewIssue]]]:
+        comments: list[ReviewComment] = []
+        overflow_issues: list[tuple[str, ReviewIssue]] = []
+        seen: set[tuple[str, int, str]] = set()
+
+        for analysis in analyses:
+            valid_lines = extract_added_lines(analysis.patch)
+            for issue in analysis.issues:
+                issue_key = (analysis.path, issue.line, issue.message)
+                if issue_key in seen:
+                    continue
+                seen.add(issue_key)
+
+                if valid_lines and issue.line in valid_lines and len(comments) < self.settings.max_comments_per_review:
+                    comments.append(
+                        ReviewComment(
+                            path=analysis.path,
+                            line=issue.line,
+                            body=self._format_comment(issue),
+                        )
+                    )
+                else:
+                    overflow_issues.append((analysis.path, issue))
+
+        return comments, overflow_issues
+
+    def _format_comment(self, issue: ReviewIssue) -> str:
+        severity_emoji = {
+            "high": "🔴",
+            "medium": "🟡",
+            "low": "🟢",
+        }.get(issue.severity, "⚪")
+        type_label = issue.issue_type.upper()
+        body = f"{severity_emoji} **{type_label}** ({issue.severity})\n\n{issue.message}"
+        if issue.suggestion:
+            body += f"\n\nSuggested fix: {issue.suggestion}"
+        return body
+
+    def _determine_event(self, analyses: list[FileReview]) -> str:
+        for analysis in analyses:
+            for issue in analysis.issues:
+                if issue.severity == "high" or issue.issue_type in {"security", "bug"}:
+                    return "REQUEST_CHANGES"
+        if any(analysis.issues for analysis in analyses):
+            return "COMMENT"
+        return "APPROVE"
+
+    def _should_skip_simple_change(self, file: ChangedFile) -> bool:
+        if self.settings.review_simple_changes:
+            return False
+        if file.status == "added":
+            return False
+        added_lines = [
+            line[1:].strip()
+            for line in file.patch.splitlines()
+            if line.startswith("+") and not line.startswith("+++")
+        ]
+        removed_lines = [
+            line[1:].strip()
+            for line in file.patch.splitlines()
+            if line.startswith("-") and not line.startswith("---")
+        ]
+        if len(added_lines) + len(removed_lines) > 4:
+            return False
+        meaningful_lines = [line for line in added_lines + removed_lines if line]
+        if not meaningful_lines:
+            return True
+        comment_only = all(
+            line.startswith(("#", "//", "/*", "*", "<!--"))
+            for line in meaningful_lines
+        )
+        token_count = sum(len(line) for line in meaningful_lines)
+        return comment_only or token_count < 40
+
+    @staticmethod
+    def _extract_json_block(text: str) -> str | None:
+        match = re.search(r"\{[\s\S]*\}", text)
+        return match.group(0) if match else None
+
+    async def answer_review_comment(
+        self,
+        comment: ReviewCommentContext,
+        pull_request: PullRequestContext,
+        file: ChangedFile,
+    ) -> str:
+        prompt = f"""
+You are replying to a GitHub pull request review comment.
+
+PR title: {pull_request.title}
+PR URL: {pull_request.html_url}
+Comment author: {comment.user_login}
+File: {comment.path}
+Line: {comment.line or "unknown"}
+
+Original comment:
+{comment.body}
+
+Diff hunk:
+```diff
+{comment.diff_hunk or "Unavailable"}
+```
+
+Current file content:
+```text
+{file.content[: self.settings.max_file_context_chars] or "Unavailable"}
+```
+
+Reply concisely. Answer directly, explain tradeoffs when relevant, and suggest a concrete next step if the commenter is asking for a fix or clarification.
+""".strip()
+
+        return await self.llm_client.chat(
+            messages=[
+                {"role": "system", "content": "You are a pull request review assistant. Reply in concise markdown."},
+                {"role": "user", "content": prompt},
+            ],
+            model=self.settings.review_model,
+            fallback_model=self.settings.resolved_fallback_review_model,
+            max_tokens=700,
+            temperature=0.1,
+        )
+
+
+def extract_added_lines(patch: str) -> set[int]:
+    if not patch:
+        return set()
+
+    lines = set()
+    current_line = 0
+    for raw_line in patch.splitlines():
+        if raw_line.startswith("@@"):
+            match = re.match(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", raw_line)
+            if match:
+                current_line = int(match.group(1))
+            continue
+        if raw_line.startswith("+++"):
+            continue
+        if raw_line.startswith("+"):
+            lines.add(current_line)
+            current_line += 1
+            continue
+        if raw_line.startswith(" "):
+            current_line += 1
+            continue
+        if raw_line.startswith("-"):
+            continue
+    return lines

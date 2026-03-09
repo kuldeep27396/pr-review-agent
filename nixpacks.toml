@@ -1,11 +1,11 @@
 [phases.setup]
-nixPkgs = ["nodejs-18_x", "npm-9_x"]
+nixPkgs = ["python311", "python311Packages.pip"]
 
 [phases.install]
-cmds = ["npm ci"]
+cmds = ["pip install -r requirements.txt"]
 
 [phases.build]
-cmds = ["echo 'No build step required'"]
+cmds = ["python -m compileall pr_review_agent"]
 
 [start]
-cmd = "npm start"
+cmd = "uvicorn pr_review_agent.main:app --host 0.0.0.0 --port ${PORT:-3000}"

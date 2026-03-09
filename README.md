@@ -167,7 +167,9 @@ In a PR review comment:
 
 ## Main Files
 
-- `pr_review_agent/main.py`: FastAPI app and webhook orchestration
+- `pr_review_agent/main.py`: thin FastAPI entrypoint
+- `pr_review_agent/app_context.py`: shared runtime wiring for settings, clients, graph, and delivery tracking
+- `pr_review_agent/webhook_handler.py`: webhook parsing and event dispatch
 - `pr_review_agent/models.py`: typed Pydantic models for webhook payloads and review objects
 - `pr_review_agent/pr_review_graph.py`: LangGraph flow for pull request review orchestration
 - `pr_review_agent/github.py`: GitHub App auth, PR file retrieval, review posting

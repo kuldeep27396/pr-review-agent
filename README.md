@@ -37,6 +37,20 @@ GitHub Webhook
   -> GitHub PR review summary + inline comments
 ```
 
+## Features
+
+- GitHub App webhook server with signed request verification
+- Diff-first PR reviews with inline comments on added lines only
+- Review verdicts mapped to GitHub review states: `APPROVE`, `COMMENT`, `REQUEST_CHANGES`
+- Groq or OpenAI provider support with optional fallback provider
+- Incremental reviews based on the last agent-reviewed commit
+- Repo-level configuration via `.pr_review_agent.toml`
+- Generated/minified file filtering and include/exclude glob patterns
+- Summary-only mode and ignore controls driven from PR title/body text
+- Review-comment replies when the bot is mentioned
+- Duplicate delivery suppression and structured logging support
+- AI-generated summary plus suggested test plan output
+
 ## Runtime
 
 - Python `3.11+`
@@ -93,6 +107,26 @@ REQUEST_PARALLELISM=3
 WEBHOOK_ACTIONS=opened,synchronize,reopened,ready_for_review
 ```
 
+`.env` is loaded automatically for local runs.
+
+## GitHub App Setup
+
+Create a GitHub App with:
+
+- Repository permissions:
+  - `Contents: Read`
+  - `Pull requests: Write`
+  - `Metadata: Read`
+- Subscribed webhook events:
+  - `Pull request`
+  - `Pull request review comment`
+
+Webhook URL:
+
+```text
+https://your-domain/webhook
+```
+
 ## Local Run
 
 ```bash
@@ -115,6 +149,18 @@ docker build -t pr-review-agent .
 docker run --env-file .env -p 3000:3000 pr-review-agent
 ```
 
+## Bot Controls
+
+In the PR title or description:
+
+- `@agent ignore`: skip the PR entirely
+- `@agent summary-only`: post only the review summary without inline comments
+
+In a PR review comment:
+
+- mention `@agent` or `@pr-review-agent` to get a contextual reply
+- useful for asking for clarification, tradeoffs, or follow-up suggestions
+
 ## Main Files
 
 - `pr_review_agent/main.py`: FastAPI app and webhook orchestration
@@ -134,10 +180,22 @@ max_comments_per_review = 10
 review_simple_changes = false
 enable_incremental_reviews = true
 enable_test_plan = true
+enable_conversation = true
 ignore_keywords = ["@agent ignore"]
 summary_only_keywords = ["@agent summary-only"]
 bot_aliases = ["@agent", "@pr-review-agent"]
 ```
+
+## Rollout
+
+Recommended rollout for the first live test:
+
+1. Deploy this branch to a staging environment.
+2. Set the required GitHub App and LLM env vars there.
+3. Confirm `GET /health` returns `200`.
+4. Open or update a small test PR in a repo where the GitHub App is installed.
+5. Check the GitHub webhook delivery log for a `200` response.
+6. Confirm the agent posts a review and, if mentioned in a review comment, posts a reply.
 
 ## Reference Features Adopted
 
@@ -151,8 +209,9 @@ From the cloned public repos, the rewrite intentionally incorporates:
 
 ## Verification
 
-Basic static verification:
+Verified locally:
 
 ```bash
 python3 -m compileall pr_review_agent tests
+python3 -m unittest discover -s tests
 ```

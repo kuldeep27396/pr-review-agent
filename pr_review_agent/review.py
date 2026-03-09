@@ -1,12 +1,22 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import re
 from typing import TYPE_CHECKING, Any
 
 from pr_review_agent.config import Settings
-from pr_review_agent.models import ChangedFile, FileReview, PullRequestContext, ReviewComment, ReviewCommentContext, ReviewIssue, ReviewOutput
+from pydantic import ValidationError
+
+from pr_review_agent.models import (
+    ChangedFile,
+    FileReview,
+    LLMReviewResponse,
+    PullRequestContext,
+    ReviewComment,
+    ReviewCommentContext,
+    ReviewIssue,
+    ReviewOutput,
+)
 
 if TYPE_CHECKING:
     from pr_review_agent.llm import LLMClient
@@ -154,8 +164,8 @@ Return JSON using this schema:
             )
 
         try:
-            data = json.loads(raw_json)
-        except json.JSONDecodeError:
+            data = LLMReviewResponse.model_validate_json(raw_json)
+        except ValidationError:
             return FileReview(
                 path=file.path,
                 assessment="COMMENT",
@@ -164,23 +174,21 @@ Return JSON using this schema:
                 patch=file.patch,
             )
 
-        issues = []
-        for issue in data.get("issues", [])[:3]:
-            issues.append(
-                ReviewIssue(
-                    line=max(1, int(issue.get("line", 1))),
-                    issue_type=str(issue.get("type", "best-practice")).strip().lower(),
-                    severity=str(issue.get("severity", "medium")).strip().lower(),
-                    message=str(issue.get("message", "")).strip(),
-                    suggestion=str(issue.get("suggestion", "")).strip(),
-                )
-            )
-
         return FileReview(
             path=file.path,
-            assessment=str(data.get("assessment", "COMMENT")).strip().upper(),
-            summary=str(data.get("summary", "Review completed.")).strip(),
-            issues=[issue for issue in issues if issue.message],
+            assessment=data.assessment.strip().upper(),
+            summary=data.summary.strip(),
+            issues=[
+                ReviewIssue(
+                    line=max(1, issue.line),
+                    type=issue.issue_type.strip().lower(),
+                    severity=issue.severity.strip().lower(),
+                    message=issue.message.strip(),
+                    suggestion=issue.suggestion.strip(),
+                )
+                for issue in data.issues[:3]
+                if issue.message.strip()
+            ],
             patch=file.patch,
         )
 

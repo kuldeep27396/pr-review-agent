@@ -9,7 +9,15 @@ import httpx
 import jwt
 
 from pr_review_agent.config import Settings
-from pr_review_agent.models import ChangedFile, PullRequestContext, ReviewOutput
+from pr_review_agent.models import (
+    ChangedFile,
+    GitHubChangedFile,
+    GitHubCompareResponse,
+    GitHubPullRequest,
+    GitHubReviewRecord,
+    PullRequestContext,
+    ReviewOutput,
+)
 
 
 class GitHubClient:
@@ -111,15 +119,7 @@ class GitHubClient:
             f"/repos/{owner}/{repo}/pulls/{pr_number}",
             installation_token,
         )
-        data = response.json()
-        return PullRequestContext(
-            number=data["number"],
-            title=data["title"],
-            body=data.get("body") or "",
-            html_url=data["html_url"],
-            head_sha=data["head"]["sha"],
-            head_ref=data["head"]["ref"],
-        )
+        return GitHubPullRequest.model_validate(response.json()).to_context()
 
     async def list_pull_request_files(
         self,
@@ -127,8 +127,8 @@ class GitHubClient:
         repo: str,
         pr_number: int,
         installation_token: str,
-    ) -> list[dict[str, Any]]:
-        files: list[dict[str, Any]] = []
+    ) -> list[GitHubChangedFile]:
+        files: list[GitHubChangedFile] = []
         page = 1
         while True:
             response = await self._installation_request(
@@ -137,7 +137,7 @@ class GitHubClient:
                 installation_token,
                 params={"per_page": 100, "page": page},
             )
-            batch = response.json()
+            batch = [GitHubChangedFile.model_validate(item) for item in response.json()]
             if not batch:
                 break
             files.extend(batch)
@@ -211,13 +211,13 @@ class GitHubClient:
         max_changes = effective_settings.max_file_size_kb * 10
 
         for item in raw_files:
-            path = item["filename"]
-            status = item["status"]
+            path = item.filename
+            status = item.status
             if include_paths is not None and path not in include_paths:
                 continue
             if status == "removed":
                 continue
-            if item.get("changes", 0) > max_changes:
+            if item.changes > max_changes:
                 continue
             if not effective_settings.should_review_path(path):
                 continue
@@ -241,9 +241,9 @@ class GitHubClient:
                 ChangedFile(
                     path=path,
                     status=status,
-                    additions=item.get("additions", 0),
-                    deletions=item.get("deletions", 0),
-                    patch=item.get("patch") or "",
+                    additions=item.additions,
+                    deletions=item.deletions,
+                    patch=item.patch,
                     content=content,
                 )
             )
@@ -267,14 +267,14 @@ class GitHubClient:
         repo: str,
         pr_number: int,
         installation_token: str,
-    ) -> list[dict[str, Any]]:
+    ) -> list[GitHubReviewRecord]:
         response = await self._installation_request(
             "GET",
             f"/repos/{owner}/{repo}/pulls/{pr_number}/reviews",
             installation_token,
             params={"per_page": 100},
         )
-        return response.json()
+        return [GitHubReviewRecord.model_validate(item) for item in response.json()]
 
     async def get_latest_agent_review_commit(
         self,
@@ -285,9 +285,9 @@ class GitHubClient:
     ) -> str | None:
         reviews = await self.list_reviews(owner, repo, pr_number, installation_token)
         for review in reversed(reviews):
-            body = review.get("body") or ""
+            body = review.body or ""
             if self.review_marker in body:
-                return review.get("commit_id")
+                return review.commit_id
         return None
 
     async def compare_filenames(
@@ -303,8 +303,8 @@ class GitHubClient:
             f"/repos/{owner}/{repo}/compare/{base}...{head}",
             installation_token,
         )
-        data = response.json()
-        return {item["filename"] for item in data.get("files", [])}
+        data = GitHubCompareResponse.model_validate(response.json())
+        return {item.filename for item in data.files}
 
     async def post_review(
         self,

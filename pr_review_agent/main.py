@@ -10,12 +10,18 @@ from typing import Any
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 
-from pr_review_agent.config import get_settings, parse_repo_config
+from pr_review_agent.config import Settings, get_settings, parse_repo_config
 from pr_review_agent.github import GitHubClient
 from pr_review_agent.llm import LLMClient
 from pr_review_agent.logging_utils import configure_logging
-from pr_review_agent.models import ChangedFile, ReviewCommentContext
+from pr_review_agent.models import (
+    ChangedFile,
+    PullRequestWebhookPayload,
+    ReviewCommentContext,
+    ReviewCommentWebhookPayload,
+)
 from pr_review_agent.review import ReviewService
 
 
@@ -91,21 +97,26 @@ async def webhook(request: Request) -> JSONResponse:
     if delivery_id in processed_deliveries:
         return JSONResponse({"status": "ignored", "reason": "duplicate delivery"})
 
-    payload = await request.json()
     logger.info("Received GitHub event=%s delivery=%s", event, delivery_id)
 
     if event == "pull_request":
-        action = payload.get("action")
-        if action not in settings.webhook_actions:
-            return JSONResponse({"status": "ignored", "reason": f"unsupported action: {action}"})
+        try:
+            payload = PullRequestWebhookPayload.model_validate_json(body)
+        except ValidationError as exc:
+            raise HTTPException(status_code=400, detail="Invalid pull_request payload") from exc
+        if payload.action not in settings.webhook_actions:
+            return JSONResponse({"status": "ignored", "reason": f"unsupported action: {payload.action}"})
         processed_deliveries[delivery_id] = time.monotonic()
         asyncio.create_task(process_pull_request_event(payload, delivery_id))
         return JSONResponse({"status": "accepted"})
 
     if event == "pull_request_review_comment":
-        action = payload.get("action")
-        if action != "created":
-            return JSONResponse({"status": "ignored", "reason": f"unsupported action: {action}"})
+        try:
+            payload = ReviewCommentWebhookPayload.model_validate_json(body)
+        except ValidationError as exc:
+            raise HTTPException(status_code=400, detail="Invalid pull_request_review_comment payload") from exc
+        if payload.action != "created":
+            return JSONResponse({"status": "ignored", "reason": f"unsupported action: {payload.action}"})
         processed_deliveries[delivery_id] = time.monotonic()
         asyncio.create_task(process_review_comment_event(payload, delivery_id))
         return JSONResponse({"status": "accepted"})
@@ -123,10 +134,10 @@ def _prune_deliveries() -> None:
 async def _resolve_effective_settings(
     owner: str,
     repo: str,
-    head_ref: str,
+    ref: str,
     installation_token: str,
-) -> Any:
-    repo_config_text = await github_client.get_repo_config_text(owner, repo, head_ref, installation_token)
+) -> Settings:
+    repo_config_text = await github_client.get_repo_config_text(owner, repo, ref, installation_token)
     if not repo_config_text:
         return settings
     try:
@@ -136,15 +147,11 @@ async def _resolve_effective_settings(
         return settings
 
 
-async def process_pull_request_event(payload: dict[str, Any], delivery_id: str) -> None:
-    pull_request = payload["pull_request"]
-    repository = payload["repository"]
-    installation = payload["installation"]
-
-    owner = repository["owner"]["login"]
-    repo = repository["name"]
-    pr_number = pull_request["number"]
-    installation_id = installation["id"]
+async def process_pull_request_event(payload: PullRequestWebhookPayload, delivery_id: str) -> None:
+    owner = payload.repository.owner.login
+    repo = payload.repository.name
+    pr_number = payload.pull_request.number
+    installation_id = payload.installation.id
 
     try:
         installation_token = await github_client.get_installation_token(installation_id)
@@ -203,7 +210,7 @@ async def process_pull_request_event(payload: dict[str, Any], delivery_id: str) 
             return
 
         total_issues = sum(len(analysis.issues) for analysis in review.analyses)
-        if total_issues == 0 and not settings.post_review_summary:
+        if total_issues == 0 and not effective_settings.post_review_summary:
             logger.info("Clean review for %s/%s#%s; summary posting disabled", owner, repo, pr_number)
             return
 
@@ -221,19 +228,14 @@ async def process_pull_request_event(payload: dict[str, Any], delivery_id: str) 
         logger.exception("Failed processing %s/%s#%s", owner, repo, pr_number)
 
 
-async def process_review_comment_event(payload: dict[str, Any], delivery_id: str) -> None:
-    repository = payload["repository"]
-    installation = payload["installation"]
-    comment = payload["comment"]
-    pull_request = payload["pull_request"]
-
-    owner = repository["owner"]["login"]
-    repo = repository["name"]
-    pr_number = pull_request["number"]
-    installation_id = installation["id"]
+async def process_review_comment_event(payload: ReviewCommentWebhookPayload, delivery_id: str) -> None:
+    owner = payload.repository.owner.login
+    repo = payload.repository.name
+    pr_number = payload.pull_request.number
+    installation_id = payload.installation.id
 
     try:
-        if comment.get("user", {}).get("type") == "Bot":
+        if payload.comment.user.type == "Bot":
             return
 
         installation_token = await github_client.get_installation_token(installation_id)
@@ -241,10 +243,10 @@ async def process_review_comment_event(payload: dict[str, Any], delivery_id: str
         effective_settings = await _resolve_effective_settings(owner, repo, pr_context.head_sha, installation_token)
         if not effective_settings.enable_conversation:
             return
-        if not effective_settings.is_bot_mentioned(comment.get("body", "")):
+        if not effective_settings.is_bot_mentioned(payload.comment.body):
             return
 
-        path = comment.get("path") or ""
+        path = payload.comment.path
         content = ""
         if path:
             content = (
@@ -261,12 +263,12 @@ async def process_review_comment_event(payload: dict[str, Any], delivery_id: str
         review_service = ReviewService(effective_settings, llm_client, logger)
         reply = await review_service.answer_review_comment(
             ReviewCommentContext(
-                comment_id=comment["id"],
-                body=comment.get("body", ""),
+                comment_id=payload.comment.id,
+                body=payload.comment.body,
                 path=path,
-                diff_hunk=comment.get("diff_hunk") or "",
-                line=comment.get("line"),
-                user_login=comment.get("user", {}).get("login", ""),
+                diff_hunk=payload.comment.diff_hunk,
+                line=payload.comment.line,
+                user_login=payload.comment.user.login,
             ),
             pr_context,
             ChangedFile(
@@ -274,7 +276,7 @@ async def process_review_comment_event(payload: dict[str, Any], delivery_id: str
                 status="modified",
                 additions=0,
                 deletions=0,
-                patch=comment.get("diff_hunk") or "",
+                patch=payload.comment.diff_hunk,
                 content=content,
             ),
         )
@@ -282,7 +284,7 @@ async def process_review_comment_event(payload: dict[str, Any], delivery_id: str
             owner,
             repo,
             pr_number,
-            comment["id"],
+            payload.comment.id,
             reply,
             installation_token,
         )

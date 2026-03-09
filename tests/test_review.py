@@ -1,7 +1,7 @@
 import unittest
 
 from pr_review_agent.config import Settings, parse_repo_config
-from pr_review_agent.models import ChangedFile
+from pr_review_agent.models import ChangedFile, LLMReviewResponse, PullRequestWebhookPayload
 from pr_review_agent.review import ReviewService, extract_added_lines
 
 
@@ -103,6 +103,33 @@ ignore_keywords = ["@agent ignore"]
         service = ReviewService.__new__(ReviewService)
         service.settings = DummySettings()
         self.assertTrue(service._should_skip_simple_change(file))
+
+    def test_llm_review_response_parses_type_alias(self) -> None:
+        parsed = LLMReviewResponse.model_validate_json(
+            """
+{"assessment":"COMMENT","summary":"ok","issues":[{"line":4,"type":"bug","severity":"high","message":"bad","suggestion":"fix"}]}
+"""
+        )
+        self.assertEqual(parsed.issues[0].issue_type, "bug")
+
+    def test_pull_request_webhook_payload_parses_nested_context(self) -> None:
+        payload = PullRequestWebhookPayload.model_validate(
+            {
+                "action": "opened",
+                "pull_request": {
+                    "number": 7,
+                    "title": "Test",
+                    "body": "Body",
+                    "html_url": "https://example.com/pr/7",
+                    "head": {"sha": "abc123", "ref": "feature"},
+                },
+                "repository": {"name": "repo", "owner": {"login": "owner"}},
+                "installation": {"id": 99},
+            }
+        )
+        context = payload.pull_request.to_context()
+        self.assertEqual(context.head_sha, "abc123")
+        self.assertEqual(payload.repository.owner.login, "owner")
 
 
 if __name__ == "__main__":

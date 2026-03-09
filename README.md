@@ -55,6 +55,7 @@ GitHub Webhook
 
 - Python `3.11+`
 - FastAPI for the webhook service
+- Pydantic and `pydantic-settings` for typed models and env configuration
 - `httpx` for GitHub and LLM API calls
 - `PyJWT[crypto]` for GitHub App JWT signing
 
@@ -164,10 +165,11 @@ In a PR review comment:
 ## Main Files
 
 - `pr_review_agent/main.py`: FastAPI app and webhook orchestration
+- `pr_review_agent/models.py`: typed Pydantic models for webhook payloads and review objects
 - `pr_review_agent/github.py`: GitHub App auth, PR file retrieval, review posting
 - `pr_review_agent/llm.py`: OpenAI-compatible provider client
 - `pr_review_agent/review.py`: diff parsing, prompting, issue filtering, summary generation
-- `pr_review_agent/config.py`: env-driven settings
+- `pr_review_agent/config.py`: `pydantic-settings` based env and repo settings
 
 ## Repo-Level Config
 

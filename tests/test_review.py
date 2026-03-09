@@ -2,6 +2,13 @@ import unittest
 
 from pr_review_agent.config import Settings, parse_repo_config
 from pr_review_agent.models import ChangedFile, LLMReviewResponse, PullRequestWebhookPayload
+from pr_review_agent.pr_review_graph import (
+    PRReviewGraphState,
+    route_after_file_fetch,
+    route_after_incremental_scope,
+    route_after_review_generation,
+    route_after_rule_evaluation,
+)
 from pr_review_agent.review import ReviewService, extract_added_lines
 
 
@@ -130,6 +137,27 @@ ignore_keywords = ["@agent ignore"]
         context = payload.pull_request.to_context()
         self.assertEqual(context.head_sha, "abc123")
         self.assertEqual(payload.repository.owner.login, "owner")
+
+    def test_langgraph_route_helpers(self) -> None:
+        payload = PullRequestWebhookPayload.model_validate(
+            {
+                "action": "opened",
+                "pull_request": {
+                    "number": 7,
+                    "title": "Test",
+                    "body": "Body",
+                    "html_url": "https://example.com/pr/7",
+                    "head": {"sha": "abc123", "ref": "feature"},
+                },
+                "repository": {"name": "repo", "owner": {"login": "owner"}},
+                "installation": {"id": 99},
+            }
+        )
+        state = PRReviewGraphState(payload=payload, delivery_id="delivery-1")
+        self.assertEqual(route_after_rule_evaluation(state), "determine_incremental_scope")
+        self.assertEqual(route_after_incremental_scope(state), "fetch_reviewable_files")
+        self.assertEqual(route_after_file_fetch(state), "__end__")
+        self.assertEqual(route_after_review_generation(state), "__end__")
 
 
 if __name__ == "__main__":

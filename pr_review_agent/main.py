@@ -5,14 +5,13 @@ import hashlib
 import hmac
 import time
 from datetime import datetime, timezone
-from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from pr_review_agent.config import Settings, get_settings, parse_repo_config
+from pr_review_agent.config import get_settings, parse_repo_config
 from pr_review_agent.github import GitHubClient
 from pr_review_agent.llm import LLMClient
 from pr_review_agent.logging_utils import configure_logging
@@ -22,6 +21,7 @@ from pr_review_agent.models import (
     ReviewCommentContext,
     ReviewCommentWebhookPayload,
 )
+from pr_review_agent.pr_review_graph import PRReviewGraphState, build_pr_review_graph
 from pr_review_agent.review import ReviewService
 
 
@@ -29,6 +29,7 @@ settings = get_settings()
 logger = configure_logging(settings.log_level, settings.log_format)
 github_client = GitHubClient(settings, logger)
 llm_client = LLMClient(settings, logger)
+pr_review_graph = build_pr_review_graph(settings, github_client, llm_client, logger)
 processed_deliveries: dict[str, float] = {}
 
 app = FastAPI(title="GitHub PR Review Agent", version="2.0.0")
@@ -131,98 +132,13 @@ def _prune_deliveries() -> None:
         processed_deliveries.pop(delivery_id, None)
 
 
-async def _resolve_effective_settings(
-    owner: str,
-    repo: str,
-    ref: str,
-    installation_token: str,
-) -> Settings:
-    repo_config_text = await github_client.get_repo_config_text(owner, repo, ref, installation_token)
-    if not repo_config_text:
-        return settings
-    try:
-        return settings.with_overrides(parse_repo_config(repo_config_text))
-    except Exception:
-        logger.exception("Failed parsing repo config owner=%s repo=%s", owner, repo)
-        return settings
-
-
 async def process_pull_request_event(payload: PullRequestWebhookPayload, delivery_id: str) -> None:
     owner = payload.repository.owner.login
     repo = payload.repository.name
     pr_number = payload.pull_request.number
-    installation_id = payload.installation.id
 
     try:
-        installation_token = await github_client.get_installation_token(installation_id)
-        pr_context = await github_client.get_pull_request(owner, repo, pr_number, installation_token)
-        effective_settings = await _resolve_effective_settings(owner, repo, pr_context.head_sha, installation_token)
-        pr_text = f"{pr_context.title}\n{pr_context.body}"
-
-        if effective_settings.should_ignore_pr(pr_text):
-            logger.info("Ignoring PR by keyword owner=%s repo=%s pr=%s", owner, repo, pr_number)
-            return
-
-        if effective_settings.is_summary_only(pr_text):
-            effective_settings = effective_settings.with_overrides({"max_comments_per_review": 0})
-
-        include_paths: set[str] | None = None
-        if effective_settings.enable_incremental_reviews:
-            latest_commit = await github_client.get_latest_agent_review_commit(owner, repo, pr_number, installation_token)
-            if latest_commit == pr_context.head_sha:
-                logger.info("Skipping duplicate reviewed commit owner=%s repo=%s pr=%s", owner, repo, pr_number)
-                return
-            if latest_commit:
-                try:
-                    include_paths = await github_client.compare_filenames(
-                        owner,
-                        repo,
-                        latest_commit,
-                        pr_context.head_sha,
-                        installation_token,
-                    )
-                except Exception:
-                    logger.exception(
-                        "Incremental compare failed; falling back to full PR review owner=%s repo=%s pr=%s",
-                        owner,
-                        repo,
-                        pr_number,
-                    )
-                    include_paths = None
-
-        files = await github_client.get_reviewable_files(
-            owner,
-            repo,
-            pr_context,
-            installation_token,
-            review_settings=effective_settings,
-            include_paths=include_paths,
-        )
-
-        if not files:
-            logger.info("No reviewable files found for %s/%s#%s", owner, repo, pr_number)
-            return
-
-        review_service = ReviewService(effective_settings, llm_client, logger)
-        review = await review_service.review_pull_request(files, pr_context)
-        if review is None:
-            logger.info("No review generated for %s/%s#%s", owner, repo, pr_number)
-            return
-
-        total_issues = sum(len(analysis.issues) for analysis in review.analyses)
-        if total_issues == 0 and not effective_settings.post_review_summary:
-            logger.info("Clean review for %s/%s#%s; summary posting disabled", owner, repo, pr_number)
-            return
-
-        await github_client.post_review(owner, repo, pr_number, review, installation_token, pr_context.head_sha)
-        logger.info(
-            "Posted review owner=%s repo=%s pr=%s event=%s inline_comments=%s",
-            owner,
-            repo,
-            pr_number,
-            review.event,
-            len(review.comments),
-        )
+        await pr_review_graph.ainvoke(PRReviewGraphState(payload=payload, delivery_id=delivery_id))
     except Exception:
         processed_deliveries.pop(delivery_id, None)
         logger.exception("Failed processing %s/%s#%s", owner, repo, pr_number)
@@ -240,7 +156,15 @@ async def process_review_comment_event(payload: ReviewCommentWebhookPayload, del
 
         installation_token = await github_client.get_installation_token(installation_id)
         pr_context = await github_client.get_pull_request(owner, repo, pr_number, installation_token)
-        effective_settings = await _resolve_effective_settings(owner, repo, pr_context.head_sha, installation_token)
+        repo_config_text = await github_client.get_repo_config_text(owner, repo, pr_context.head_sha, installation_token)
+        if repo_config_text:
+            try:
+                effective_settings = settings.with_overrides(parse_repo_config(repo_config_text))
+            except Exception:
+                logger.exception("Failed parsing repo config owner=%s repo=%s", owner, repo)
+                effective_settings = settings
+        else:
+            effective_settings = settings
         if not effective_settings.enable_conversation:
             return
         if not effective_settings.is_bot_mentioned(payload.comment.body):

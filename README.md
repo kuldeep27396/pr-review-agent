@@ -31,6 +31,7 @@ This repo used to run on Node/Express. It now runs on Python with FastAPI, keeps
 ```text
 GitHub Webhook
   -> FastAPI webhook handler
+  -> LangGraph PR review flow
   -> GitHub App auth + PR file retrieval
   -> Diff-aware review pipeline
   -> OpenAI-compatible LLM provider (Groq/OpenAI)
@@ -50,12 +51,14 @@ GitHub Webhook
 - Review-comment replies when the bot is mentioned
 - Duplicate delivery suppression and structured logging support
 - AI-generated summary plus suggested test plan output
+- LangGraph-based PR review orchestration with explicit review stages
 
 ## Runtime
 
 - Python `3.11+`
 - FastAPI for the webhook service
 - Pydantic and `pydantic-settings` for typed models and env configuration
+- LangGraph for pull request review orchestration
 - `httpx` for GitHub and LLM API calls
 - `PyJWT[crypto]` for GitHub App JWT signing
 
@@ -166,6 +169,7 @@ In a PR review comment:
 
 - `pr_review_agent/main.py`: FastAPI app and webhook orchestration
 - `pr_review_agent/models.py`: typed Pydantic models for webhook payloads and review objects
+- `pr_review_agent/pr_review_graph.py`: LangGraph flow for pull request review orchestration
 - `pr_review_agent/github.py`: GitHub App auth, PR file retrieval, review posting
 - `pr_review_agent/llm.py`: OpenAI-compatible provider client
 - `pr_review_agent/review.py`: diff parsing, prompting, issue filtering, summary generation
@@ -198,6 +202,11 @@ Recommended rollout for the first live test:
 4. Open or update a small test PR in a repo where the GitHub App is installed.
 5. Check the GitHub webhook delivery log for a `200` response.
 6. Confirm the agent posts a review and, if mentioned in a review comment, posts a reply.
+
+Current orchestration split:
+
+- PR reviews run through LangGraph
+- review-comment replies still use the direct service path
 
 ## Reference Features Adopted
 

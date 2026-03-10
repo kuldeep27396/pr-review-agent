@@ -392,6 +392,48 @@ ignore_keywords = ["@agent ignore"]
         self.assertEqual(payload.comment.body, "")
         self.assertEqual(payload.action, "edited")
 
+    def test_should_review_path_respects_include_and_exclude_patterns(self) -> None:
+        settings = Settings(
+            github_app_id=None,
+            github_private_key=None,
+            github_webhook_secret=None,
+            groq_api_key=None,
+            openai_api_key=None,
+            llm_provider="groq",
+            fallback_llm_provider=None,
+            review_model="a",
+            summary_model=None,
+            fallback_review_model=None,
+            fallback_summary_model=None,
+            port=3000,
+            environment="test",
+            log_level="INFO",
+            log_format="plain",
+            max_files_to_review=10,
+            max_file_size_kb=100,
+            review_timeout_ms=30000,
+            max_patch_chars=100,
+            max_file_context_chars=100,
+            max_comments_per_review=20,
+            review_simple_changes=False,
+            post_review_summary=True,
+            enable_incremental_reviews=True,
+            enable_conversation=True,
+            enable_test_plan=True,
+            config_file_path=".pr_review_agent.toml",
+            delivery_ttl_seconds=10,
+            include_patterns=("tests/*.py",),
+            exclude_patterns=("tests/generated_*.py",),
+            bot_aliases=("@agent",),
+            ignore_keywords=("@agent ignore",),
+            summary_only_keywords=("@agent summary-only",),
+            staff_review_commands=("/staff-review",),
+            generated_markers=("@generated",),
+        )
+        self.assertTrue(settings.should_review_path("tests/test_review.py"))
+        self.assertFalse(settings.should_review_path("pr_review_agent/review.py"))
+        self.assertFalse(settings.should_review_path("tests/generated_fixture.py"))
+
     def test_langgraph_route_helpers(self) -> None:
         payload = PullRequestWebhookPayload.model_validate(
             {

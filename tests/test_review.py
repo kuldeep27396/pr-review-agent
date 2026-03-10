@@ -375,7 +375,7 @@ ignore_keywords = ["@agent ignore"]
     def test_issue_comment_payload_normalizes_null_body(self) -> None:
         payload = IssueCommentWebhookPayload.model_validate(
             {
-                "action": "created",
+                "action": "edited",
                 "comment": {
                     "id": 12,
                     "body": None,
@@ -390,6 +390,7 @@ ignore_keywords = ["@agent ignore"]
             }
         )
         self.assertEqual(payload.comment.body, "")
+        self.assertEqual(payload.action, "edited")
 
     def test_langgraph_route_helpers(self) -> None:
         payload = PullRequestWebhookPayload.model_validate(

@@ -91,7 +91,7 @@ class WebhookHandler:
                 body,
                 "Invalid pull_request_review_comment payload",
             )
-            if payload.action != "created":
+            if payload.action not in {"created", "edited"}:
                 return JSONResponse({"status": "ignored", "reason": f"unsupported action: {payload.action}"})
             self.context.track_delivery(delivery_id)
             await self.process_review_comment_event(payload, delivery_id)
@@ -103,7 +103,7 @@ class WebhookHandler:
                 body,
                 "Invalid issue_comment payload",
             )
-            if payload.action != "created":
+            if payload.action not in {"created", "edited"}:
                 return JSONResponse({"status": "ignored", "reason": f"unsupported action: {payload.action}"})
             if payload.issue.pull_request is None:
                 return JSONResponse({"status": "ignored", "reason": "issue comment is not on a pull request"})

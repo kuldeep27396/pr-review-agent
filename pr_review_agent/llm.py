@@ -7,14 +7,7 @@ import httpx
 from pr_review_agent.config import Settings
 
 
-class LLMClient:
-    def __init__(self, settings: Settings, logger: Any) -> None:
-        self.settings = settings
-        self.logger = logger
-        self.client = httpx.AsyncClient(timeout=max(10.0, settings.review_timeout_ms / 1000))
 
-    async def aclose(self) -> None:
-        await self.client.aclose()
 
     @property
     def base_url(self) -> str:

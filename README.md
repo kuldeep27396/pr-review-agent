@@ -245,3 +245,7 @@ Verified locally:
 python3 -m compileall pr_review_agent tests
 python3 -m unittest discover -s tests
 ```
+
+Smoke-test note:
+
+- a minimal README-only PR can be used to validate webhook delivery and `/staff-review` comment handling without touching runtime code

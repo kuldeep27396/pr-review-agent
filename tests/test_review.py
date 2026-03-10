@@ -3,6 +3,7 @@ import unittest
 from pr_review_agent.config import Settings, parse_repo_config
 from pr_review_agent.models import (
     ChangedFile,
+    GitHubPullRequest,
     IssueCommentWebhookPayload,
     LLMReviewResponse,
     PullRequestWebhookPayload,
@@ -189,6 +190,20 @@ ignore_keywords = ["@agent ignore"]
         self.assertEqual(context.head_sha, "abc123")
         self.assertEqual(payload.repository.owner.login, "owner")
 
+    def test_pull_request_model_normalizes_null_text_fields(self) -> None:
+        payload = GitHubPullRequest.model_validate(
+            {
+                "number": 7,
+                "title": None,
+                "body": None,
+                "html_url": None,
+                "head": {"sha": "abc123", "ref": "feature"},
+            }
+        )
+        self.assertEqual(payload.title, "")
+        self.assertEqual(payload.body, "")
+        self.assertEqual(payload.html_url, "")
+
     def test_issue_comment_webhook_payload_parses_pull_request_comment(self) -> None:
         payload = IssueCommentWebhookPayload.model_validate(
             {
@@ -208,6 +223,25 @@ ignore_keywords = ["@agent ignore"]
         )
         self.assertEqual(payload.issue.number, 7)
         self.assertEqual(payload.comment.user.login, "alice")
+
+    def test_issue_comment_payload_normalizes_null_body(self) -> None:
+        payload = IssueCommentWebhookPayload.model_validate(
+            {
+                "action": "created",
+                "comment": {
+                    "id": 12,
+                    "body": None,
+                    "user": {"login": "alice", "type": "User"},
+                },
+                "issue": {
+                    "number": 7,
+                    "pull_request": {"url": "https://api.github.com/repos/owner/repo/pulls/7"},
+                },
+                "repository": {"name": "repo", "owner": {"login": "owner"}},
+                "installation": {"id": 99},
+            }
+        )
+        self.assertEqual(payload.comment.body, "")
 
     def test_langgraph_route_helpers(self) -> None:
         payload = PullRequestWebhookPayload.model_validate(

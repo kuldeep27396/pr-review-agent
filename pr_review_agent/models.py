@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class AppBaseModel(BaseModel):
@@ -100,6 +100,11 @@ class GitHubPullRequest(AppBaseModel):
     html_url: str = ""
     head: GitHubHead
 
+    @field_validator("title", "body", "html_url", mode="before")
+    @classmethod
+    def _normalize_nullable_text(cls, value: Any) -> str:
+        return "" if value is None else str(value)
+
     def to_context(self) -> PullRequestContext:
         return PullRequestContext(
             number=self.number,
@@ -126,6 +131,11 @@ class GitHubReviewComment(AppBaseModel):
     line: int | None = None
     user: GitHubAccount
 
+    @field_validator("body", "path", "diff_hunk", mode="before")
+    @classmethod
+    def _normalize_nullable_text(cls, value: Any) -> str:
+        return "" if value is None else str(value)
+
 
 class ReviewCommentWebhookPayload(AppBaseModel):
     action: Literal["created"] | str
@@ -144,6 +154,11 @@ class GitHubIssueComment(AppBaseModel):
     id: int
     body: str = ""
     user: GitHubAccount
+
+    @field_validator("body", mode="before")
+    @classmethod
+    def _normalize_nullable_text(cls, value: Any) -> str:
+        return "" if value is None else str(value)
 
 
 class IssueCommentWebhookPayload(AppBaseModel):

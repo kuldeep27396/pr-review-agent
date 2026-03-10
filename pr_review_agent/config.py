@@ -170,7 +170,11 @@ class Settings(BaseSettings):
     def normalized_private_key(self) -> str | None:
         if not self.github_private_key:
             return None
-        return self.github_private_key.replace("\\n", "\n")
+        key = self.github_private_key.strip()
+        if len(key) >= 2 and key[0] == key[-1] and key[0] in {"'", '"'}:
+            key = key[1:-1]
+        key = key.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\r\n", "\n")
+        return key.strip()
 
     @property
     def resolved_summary_model(self) -> str:

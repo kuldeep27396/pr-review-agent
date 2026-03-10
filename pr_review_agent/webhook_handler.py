@@ -116,13 +116,13 @@ class WebhookHandler:
 
         return JSONResponse({"status": "ignored", "reason": f"unsupported event: {event}"})
 
-    @staticmethod
-    def _parse_payload(model, body: bytes, error_detail: str):
+    def _parse_payload(self, model, body: bytes, error_detail: str):
         try:
             return model.model_validate_json(body)
         except ValidationError as exc:
             details = exc.errors(include_url=False)
             message = f"{error_detail}: {details}"
+            self.context.logger.warning("%s", message)
             raise HTTPException(status_code=400, detail=message) from exc
 
     async def process_pull_request_event(

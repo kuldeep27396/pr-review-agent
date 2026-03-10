@@ -179,7 +179,7 @@ class Settings(BaseSettings):
     def resolved_fallback_summary_model(self) -> str:
         return self.fallback_summary_model or self.resolved_summary_model
 
-    def validate_runtime(self) -> None:
+    def missing_runtime_variables(self) -> tuple[str, ...]:
         missing = []
         if not self.github_app_id:
             missing.append("GITHUB_APP_ID")
@@ -189,6 +189,10 @@ class Settings(BaseSettings):
             missing.append("GITHUB_WEBHOOK_SECRET")
         if not self.api_key:
             missing.append("GROQ_API_KEY" if self.llm_provider == "groq" else "OPENAI_API_KEY")
+        return tuple(missing)
+
+    def validate_runtime(self) -> None:
+        missing = self.missing_runtime_variables()
         if missing:
             raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
 

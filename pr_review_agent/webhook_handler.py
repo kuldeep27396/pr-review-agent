@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from typing import Any
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -22,24 +23,47 @@ class WebhookHandler:
         self.context = context
 
     def root_response(self) -> JSONResponse:
-        return JSONResponse(
-            {
-                "name": "GitHub PR Review Agent",
-                "description": "Automated PR reviews powered by Python",
-                "status": "running",
-                "runtime": "python",
+        payload: dict[str, Any] = {
+            "name": "GitHub PR Review Agent",
+            "description": "Automated PR reviews powered by Python",
+            "status": "running",
+            "runtime": "python",
+        }
+        missing = self.context.settings.missing_runtime_variables()
+        if missing:
+            payload["configuration"] = {
+                "status": "incomplete",
+                "missing": list(missing),
             }
+        return JSONResponse(
+            payload
         )
 
     def health_response(self) -> JSONResponse:
+        missing = self.context.settings.missing_runtime_variables()
+        status = "healthy" if not missing else "degraded"
+        status_code = 200 if not missing else 503
         return JSONResponse(
             {
-                "status": "healthy",
+                "status": status,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
+                "missing_configuration": list(missing),
+            },
+            status_code=status_code,
         )
 
     async def handle_webhook(self, request: Request) -> JSONResponse:
+        missing = self.context.settings.missing_runtime_variables()
+        if missing:
+            return JSONResponse(
+                {
+                    "status": "error",
+                    "reason": "runtime not configured",
+                    "missing_configuration": list(missing),
+                },
+                status_code=503,
+            )
+
         body = await request.body()
         signature = request.headers.get("x-hub-signature-256")
         event = request.headers.get("x-github-event")

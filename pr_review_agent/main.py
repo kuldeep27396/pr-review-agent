@@ -14,11 +14,13 @@ handler = WebhookHandler(context)
 
 @app.on_event("startup")
 async def on_startup() -> None:
-    context.settings.validate_runtime()
     context.logger.info("Starting Python PR review agent")
     context.logger.info("Environment: %s", context.settings.environment)
     context.logger.info("LLM provider: %s", context.settings.llm_provider)
     context.logger.info("Review model: %s", context.settings.review_model)
+    missing = context.settings.missing_runtime_variables()
+    if missing:
+        context.logger.warning("Runtime configuration incomplete: %s", ", ".join(missing))
 
 
 @app.on_event("shutdown")

@@ -1,0 +1,7 @@
+[review]
+max_files_to_review = 20
+max_comments_per_review = 8
+review_simple_changes = true
+post_review_summary = true
+enable_incremental_reviews = false
+enable_test_plan = true

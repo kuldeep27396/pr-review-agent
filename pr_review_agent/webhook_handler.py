@@ -1,6 +1,4 @@
 from __future__ import annotations
-
-import asyncio
 from datetime import datetime, timezone
 from typing import Any
 
@@ -84,8 +82,8 @@ class WebhookHandler:
             if payload.action not in self.context.settings.webhook_actions:
                 return JSONResponse({"status": "ignored", "reason": f"unsupported action: {payload.action}"})
             self.context.track_delivery(delivery_id)
-            asyncio.create_task(self.process_pull_request_event(payload, delivery_id))
-            return JSONResponse({"status": "accepted"})
+            await self.process_pull_request_event(payload, delivery_id)
+            return JSONResponse({"status": "processed"})
 
         if event == "pull_request_review_comment":
             payload = self._parse_payload(
@@ -96,8 +94,8 @@ class WebhookHandler:
             if payload.action != "created":
                 return JSONResponse({"status": "ignored", "reason": f"unsupported action: {payload.action}"})
             self.context.track_delivery(delivery_id)
-            asyncio.create_task(self.process_review_comment_event(payload, delivery_id))
-            return JSONResponse({"status": "accepted"})
+            await self.process_review_comment_event(payload, delivery_id)
+            return JSONResponse({"status": "processed"})
 
         if event == "issue_comment":
             payload = self._parse_payload(
@@ -113,8 +111,8 @@ class WebhookHandler:
             if command_text is None:
                 return JSONResponse({"status": "ignored", "reason": "no staff review command found"})
             self.context.track_delivery(delivery_id)
-            asyncio.create_task(self.process_issue_comment_event(payload, delivery_id, command_text))
-            return JSONResponse({"status": "accepted"})
+            await self.process_issue_comment_event(payload, delivery_id, command_text)
+            return JSONResponse({"status": "processed"})
 
         return JSONResponse({"status": "ignored", "reason": f"unsupported event: {event}"})
 
@@ -123,7 +121,9 @@ class WebhookHandler:
         try:
             return model.model_validate_json(body)
         except ValidationError as exc:
-            raise HTTPException(status_code=400, detail=error_detail) from exc
+            details = exc.errors(include_url=False)
+            message = f"{error_detail}: {details}"
+            raise HTTPException(status_code=400, detail=message) from exc
 
     async def process_pull_request_event(
         self,

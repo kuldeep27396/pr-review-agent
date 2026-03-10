@@ -153,6 +153,22 @@ docker build -t pr-review-agent .
 docker run --env-file .env -p 3000:3000 pr-review-agent
 ```
 
+## Vercel
+
+Vercel requires a top-level FastAPI entrypoint. This repo exposes one via `app.py`.
+
+Deploy requirements:
+
+- Python runtime on Vercel
+- env vars configured in the Vercel project
+- GitHub App webhook URL set to:
+  `https://your-vercel-domain/webhook`
+
+Current Vercel note:
+
+- the app now builds on Vercel with the FastAPI entrypoint
+- for production reliability, webhook processing on Vercel should ideally avoid relying on post-response background tasks
+
 ## Bot Controls
 
 In the PR title or description:

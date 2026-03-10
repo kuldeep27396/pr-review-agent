@@ -174,12 +174,29 @@ class GitHubClient:
         ref: str,
         installation_token: str,
     ) -> str | None:
+        response = await self.client.request(
+            "GET",
+            f"/repos/{owner}/{repo}/contents/{quote(path, safe='/')}",
+            headers=self._default_headers(installation_token),
+            params={"ref": ref},
+        )
+        if response.status_code == 404:
+            return None
         try:
-            return await self.get_file_content(owner, repo, path, ref, installation_token)
+            response.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 404:
-                return None
+            self.logger.error(
+                "GitHub API request failed for GET %s: %s",
+                f"/repos/{owner}/{repo}/contents/{quote(path, safe='/')}",
+                exc.response.text,
+            )
             raise
+
+        data = response.json()
+        encoded = data.get("content")
+        if not encoded:
+            return ""
+        return base64.b64decode(encoded).decode("utf-8", errors="replace")
 
     async def get_repo_config_text(
         self,
@@ -251,14 +268,24 @@ class GitHubClient:
         return result
 
     def _is_generated_file(self, path: str, content: str, review_settings: Settings) -> bool:
-        lowered = content[:2000].lower()
-        if any(marker.lower() in lowered for marker in review_settings.generated_markers):
+        if self._has_generated_header_marker(content, review_settings):
             return True
         if path.endswith((".min.js", ".min.css")):
             return True
         lines = content.splitlines()
         if content and len(content) > 5000 and len(lines) <= 10:
             return True
+        return False
+
+    @staticmethod
+    def _has_generated_header_marker(content: str, review_settings: Settings) -> bool:
+        comment_prefixes = ("#", "//", "/*", "*", "<!--", "--", ";")
+        candidate_lines = [line.strip().lower() for line in content.splitlines()[:20] if line.strip()]
+        for line in candidate_lines:
+            if not line.startswith(comment_prefixes):
+                continue
+            if any(marker.lower() in line for marker in review_settings.generated_markers):
+                return True
         return False
 
     async def list_reviews(

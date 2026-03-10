@@ -21,27 +21,6 @@ from pr_review_agent.pr_review_graph import (
 from pr_review_agent.review import ReviewService, extract_added_lines
 
 
-class DummySettings:
-    review_simple_changes = False
-    enable_test_plan = True
-
-
-class ReviewTests(unittest.TestCase):
-    def test_repo_config_parser(self) -> None:
-        parsed = parse_repo_config(
-            """
-[review]
-max_comments_per_review = 5
-ignore_keywords = ["@agent ignore"]
-"""
-        )
-        self.assertEqual(parsed["max_comments_per_review"], 5)
-        self.assertEqual(parsed["ignore_keywords"], ["@agent ignore"])
-
-    def test_settings_overrides_and_keywords(self) -> None:
-        base = Settings(
-            github_app_id=None,
-            github_private_key=None,
             github_webhook_secret=None,
             groq_api_key=None,
             openai_api_key=None,

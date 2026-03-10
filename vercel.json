@@ -1,0 +1,14 @@
+{
+  "functions": {
+    "app.py": {
+      "runtime": "python3.11",
+      "maxDuration": 300
+    }
+  },
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "app.py"
+    }
+  ]
+}

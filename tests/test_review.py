@@ -1,7 +1,12 @@
 import unittest
 
 from pr_review_agent.config import Settings, parse_repo_config
-from pr_review_agent.models import ChangedFile, LLMReviewResponse, PullRequestWebhookPayload
+from pr_review_agent.models import (
+    ChangedFile,
+    IssueCommentWebhookPayload,
+    LLMReviewResponse,
+    PullRequestWebhookPayload,
+)
 from pr_review_agent.pr_review_graph import (
     PRReviewGraphState,
     route_after_file_fetch,
@@ -74,6 +79,9 @@ ignore_keywords = ["@agent ignore"]
         self.assertEqual(updated.max_comments_per_review, 5)
         self.assertTrue(updated.should_ignore_pr("please skip this pr"))
         self.assertTrue(updated.is_bot_mentioned("@agent please explain"))
+        self.assertEqual(updated.extract_staff_review_prompt("/staff-review explain this"), "explain this")
+        self.assertEqual(updated.extract_staff_review_prompt("/staff-review"), "")
+        self.assertIsNone(updated.extract_staff_review_prompt("@agent explain this"))
 
     def test_extract_added_lines_tracks_new_file_positions(self) -> None:
         patch = """@@ -1,2 +1,4 @@
@@ -137,6 +145,26 @@ ignore_keywords = ["@agent ignore"]
         context = payload.pull_request.to_context()
         self.assertEqual(context.head_sha, "abc123")
         self.assertEqual(payload.repository.owner.login, "owner")
+
+    def test_issue_comment_webhook_payload_parses_pull_request_comment(self) -> None:
+        payload = IssueCommentWebhookPayload.model_validate(
+            {
+                "action": "created",
+                "comment": {
+                    "id": 12,
+                    "body": "/staff-review explain this issue",
+                    "user": {"login": "alice", "type": "User"},
+                },
+                "issue": {
+                    "number": 7,
+                    "pull_request": {"url": "https://api.github.com/repos/owner/repo/pulls/7"},
+                },
+                "repository": {"name": "repo", "owner": {"login": "owner"}},
+                "installation": {"id": 99},
+            }
+        )
+        self.assertEqual(payload.issue.number, 7)
+        self.assertEqual(payload.comment.user.login, "alice")
 
     def test_langgraph_route_helpers(self) -> None:
         payload = PullRequestWebhookPayload.model_validate(

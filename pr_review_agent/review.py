@@ -434,6 +434,36 @@ Reply concisely. Answer directly, explain tradeoffs when relevant, and suggest a
             temperature=0.1,
         )
 
+    async def answer_pull_request_comment(
+        self,
+        prompt_text: str,
+        pull_request: PullRequestContext,
+    ) -> str:
+        prompt = f"""
+You are replying to a GitHub pull request conversation comment.
+
+PR title: {pull_request.title}
+PR URL: {pull_request.html_url}
+PR description:
+{pull_request.body or "Unavailable"}
+
+User request:
+{prompt_text or "Explain the current review concerns and next steps."}
+
+Reply concisely. Focus on the current PR, explain tradeoffs when useful, and end with a concrete next step when the user is asking for help.
+""".strip()
+
+        return await self.llm_client.chat(
+            messages=[
+                {"role": "system", "content": "You are a pull request review assistant. Reply in concise markdown."},
+                {"role": "user", "content": prompt},
+            ],
+            model=self.settings.review_model,
+            fallback_model=self.settings.resolved_fallback_review_model,
+            max_tokens=700,
+            temperature=0.1,
+        )
+
 
 def extract_added_lines(patch: str) -> set[int]:
     if not patch:

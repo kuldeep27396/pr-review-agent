@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from pr_review_agent.app_context import AppContext
 from pr_review_agent.models import (
     ChangedFile,
+    IssueCommentWebhookPayload,
     PullRequestWebhookPayload,
     ReviewCommentContext,
     ReviewCommentWebhookPayload,
@@ -96,6 +97,23 @@ class WebhookHandler:
                 return JSONResponse({"status": "ignored", "reason": f"unsupported action: {payload.action}"})
             self.context.track_delivery(delivery_id)
             asyncio.create_task(self.process_review_comment_event(payload, delivery_id))
+            return JSONResponse({"status": "accepted"})
+
+        if event == "issue_comment":
+            payload = self._parse_payload(
+                IssueCommentWebhookPayload,
+                body,
+                "Invalid issue_comment payload",
+            )
+            if payload.action != "created":
+                return JSONResponse({"status": "ignored", "reason": f"unsupported action: {payload.action}"})
+            if payload.issue.pull_request is None:
+                return JSONResponse({"status": "ignored", "reason": "issue comment is not on a pull request"})
+            command_text = self.context.settings.extract_staff_review_prompt(payload.comment.body)
+            if command_text is None:
+                return JSONResponse({"status": "ignored", "reason": "no staff review command found"})
+            self.context.track_delivery(delivery_id)
+            asyncio.create_task(self.process_issue_comment_event(payload, delivery_id, command_text))
             return JSONResponse({"status": "accepted"})
 
         return JSONResponse({"status": "ignored", "reason": f"unsupported event: {event}"})
@@ -208,6 +226,58 @@ class WebhookHandler:
             self.context.clear_delivery(delivery_id)
             self.context.logger.exception(
                 "Failed processing review comment owner=%s repo=%s pr=%s",
+                owner,
+                repo,
+                pr_number,
+            )
+
+    async def process_issue_comment_event(
+        self,
+        payload: IssueCommentWebhookPayload,
+        delivery_id: str,
+        command_text: str,
+    ) -> None:
+        owner = payload.repository.owner.login
+        repo = payload.repository.name
+        pr_number = payload.issue.number
+        installation_id = payload.installation.id
+
+        try:
+            if payload.comment.user.type == "Bot":
+                return
+
+            installation_token = await self.context.github_client.get_installation_token(installation_id)
+            pr_context = await self.context.github_client.get_pull_request(
+                owner,
+                repo,
+                pr_number,
+                installation_token,
+            )
+            effective_settings = await self.context.resolve_effective_settings(
+                owner,
+                repo,
+                pr_context.head_sha,
+                installation_token,
+            )
+            review_service = self.context.create_review_service(effective_settings)
+            reply = await review_service.answer_pull_request_comment(command_text, pr_context)
+            await self.context.github_client.post_issue_comment(
+                owner,
+                repo,
+                pr_number,
+                reply,
+                installation_token,
+            )
+            self.context.logger.info(
+                "Posted staff review reply owner=%s repo=%s pr=%s",
+                owner,
+                repo,
+                pr_number,
+            )
+        except Exception:
+            self.context.clear_delivery(delivery_id)
+            self.context.logger.exception(
+                "Failed processing issue comment owner=%s repo=%s pr=%s",
                 owner,
                 repo,
                 pr_number,

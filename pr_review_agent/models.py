@@ -135,6 +135,25 @@ class ReviewCommentWebhookPayload(AppBaseModel):
     installation: GitHubInstallation
 
 
+class GitHubIssue(AppBaseModel):
+    number: int
+    pull_request: dict[str, str] | None = None
+
+
+class GitHubIssueComment(AppBaseModel):
+    id: int
+    body: str = ""
+    user: GitHubAccount
+
+
+class IssueCommentWebhookPayload(AppBaseModel):
+    action: Literal["created"] | str
+    comment: GitHubIssueComment
+    issue: GitHubIssue
+    repository: GitHubRepository
+    installation: GitHubInstallation
+
+
 class GitHubChangedFile(AppBaseModel):
     filename: str
     status: str

@@ -351,3 +351,18 @@ class GitHubClient:
             installation_token,
             json={"body": body, "in_reply_to": in_reply_to},
         )
+
+    async def post_issue_comment(
+        self,
+        owner: str,
+        repo: str,
+        issue_number: int,
+        body: str,
+        installation_token: str,
+    ) -> None:
+        await self._installation_request(
+            "POST",
+            f"/repos/{owner}/{repo}/issues/{issue_number}/comments",
+            installation_token,
+            json={"body": body},
+        )

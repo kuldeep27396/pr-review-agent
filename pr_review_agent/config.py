@@ -103,6 +103,10 @@ class Settings(BaseSettings):
         default=("@agent summary-only", "@pr-review-agent summary-only"),
         validation_alias="SUMMARY_ONLY_KEYWORDS",
     )
+    staff_review_commands: tuple[str, ...] = Field(
+        default=("/staff-review",),
+        validation_alias="STAFF_REVIEW_COMMANDS",
+    )
     generated_markers: tuple[str, ...] = Field(
         default=(
             "@generated",
@@ -128,6 +132,7 @@ class Settings(BaseSettings):
         "bot_aliases",
         "ignore_keywords",
         "summary_only_keywords",
+        "staff_review_commands",
         "generated_markers",
         "webhook_actions",
         mode="before",
@@ -218,6 +223,21 @@ class Settings(BaseSettings):
         lowered = text.lower()
         return any(alias.lower() in lowered for alias in self.bot_aliases)
 
+    def extract_staff_review_prompt(self, text: str) -> str | None:
+        stripped = text.strip()
+        lowered = stripped.lower()
+        for command in self.staff_review_commands:
+            normalized = command.strip()
+            if not normalized:
+                continue
+            normalized_lower = normalized.lower()
+            if lowered == normalized_lower:
+                return ""
+            prefix = f"{normalized_lower} "
+            if lowered.startswith(prefix):
+                return stripped[len(normalized):].strip()
+        return None
+
     def with_overrides(self, overrides: dict[str, Any]) -> "Settings":
         allowed = {
             "review_model",
@@ -235,6 +255,7 @@ class Settings(BaseSettings):
             "exclude_patterns",
             "ignore_keywords",
             "summary_only_keywords",
+            "staff_review_commands",
             "bot_aliases",
             "generated_markers",
         }

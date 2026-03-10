@@ -259,8 +259,28 @@ class WebhookHandler:
                 pr_context.head_sha,
                 installation_token,
             )
-            review_service = self.context.create_review_service(effective_settings)
-            reply = await review_service.answer_pull_request_comment(command_text, pr_context)
+            review_service = self.context.create_review_service(
+                effective_settings.with_overrides({"enable_incremental_reviews": False})
+            )
+            files = await self.context.github_client.get_reviewable_files(
+                owner,
+                repo,
+                pr_context,
+                installation_token,
+                review_settings=review_service.settings,
+                include_paths=None,
+            )
+            review = await review_service.review_pull_request(files, pr_context)
+            if review is not None:
+                await self.context.github_client.post_review(
+                    owner,
+                    repo,
+                    pr_number,
+                    review,
+                    installation_token,
+                    pr_context.head_sha,
+                )
+            reply = await review_service.answer_pull_request_comment(command_text, pr_context, review)
             await self.context.github_client.post_issue_comment(
                 owner,
                 repo,
@@ -269,10 +289,11 @@ class WebhookHandler:
                 installation_token,
             )
             self.context.logger.info(
-                "Posted staff review reply owner=%s repo=%s pr=%s",
+                "Posted staff review reply owner=%s repo=%s pr=%s reran_review=%s",
                 owner,
                 repo,
                 pr_number,
+                review is not None,
             )
         except Exception:
             self.context.clear_delivery(delivery_id)

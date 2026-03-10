@@ -65,10 +65,10 @@ class Settings(BaseSettings):
         default=None,
         validation_alias="FALLBACK_LLM_PROVIDER",
     )
-    review_model: str = Field(default="llama-3.3-70b-versatile", validation_alias="REVIEW_MODEL")
-    summary_model: str | None = Field(default=None, validation_alias="SUMMARY_MODEL")
-    fallback_review_model: str | None = Field(default=None, validation_alias="FALLBACK_REVIEW_MODEL")
-    fallback_summary_model: str | None = Field(default=None, validation_alias="FALLBACK_SUMMARY_MODEL")
+    review_model: str = Field(default="openai/gpt-oss-120b", validation_alias="REVIEW_MODEL")
+    summary_model: str | None = Field(default="llama-3.3-70b-versatile", validation_alias="SUMMARY_MODEL")
+    fallback_review_model: str | None = Field(default="llama-3.3-70b-versatile", validation_alias="FALLBACK_REVIEW_MODEL")
+    fallback_summary_model: str | None = Field(default="llama-3.1-8b-instant", validation_alias="FALLBACK_SUMMARY_MODEL")
     port: int = Field(default=3000, validation_alias="PORT")
     environment: str = Field(default="production", validation_alias="NODE_ENV")
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")

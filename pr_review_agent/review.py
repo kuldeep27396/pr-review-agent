@@ -32,7 +32,7 @@ Return valid JSON only.
 SUMMARY_SYSTEM_PROMPT = """
 You summarize pull request reviews for GitHub.
 Be factual, concise, and action-oriented.
-Return markdown only.
+Return concise markdown bullets only.
 """.strip()
 
 
@@ -124,6 +124,8 @@ Rules:
 - Focus on the changed code, not the entire repository.
 - For modified files, only report inline issues on added lines in the diff.
 - Avoid low-value praise and cosmetic comments.
+- Reason through correctness, failure paths, regressions, and test impact before deciding there is no issue.
+- If the change is safe, explain why briefly in the file summary.
 - Report at most 3 meaningful issues.
 
 Unified diff:
@@ -199,10 +201,14 @@ Return JSON using this schema:
         overflow_issues: list[tuple[str, ReviewIssue]],
         comments: list[ReviewComment],
     ) -> str:
+        verdict = self._determine_event(analyses)
         if not analyses:
-            return (
-                "## PR Review\n\n"
-                "No substantive files were reviewed. The changes were either filtered out or skipped as trivial."
+            return self._compose_structured_summary(
+                verdict=verdict,
+                executive_summary="No substantive files were reviewed. The changes were filtered out or skipped as trivial.",
+                analyses=[],
+                overflow_issues=[],
+                comments=[],
             )
 
         issue_count = sum(len(analysis.issues) for analysis in analyses)
@@ -221,13 +227,15 @@ Return JSON using this schema:
 
         test_plan_instruction = "- a short test plan section" if self.settings.enable_test_plan else ""
         prompt = f"""
-Summarize this pull request review as markdown.
+Summarize this pull request review as compact markdown bullets.
 
 PR title: {pull_request.title}
 PR URL: {pull_request.html_url}
 Files reviewed: {len(analyses)}
 Inline comments posted: {len(comments)}
 Total issues found: {issue_count}
+Final review event: {verdict}
+Merge recommendation: {self._merge_recommendation(verdict)}
 
 Per-file review results:
 {facts}
@@ -236,14 +244,14 @@ Issues not posted inline:
 {overflow or "- none"}
 
 Write:
-- a one-line verdict
-- a short bullet list of key risks
-- a short bullet list of file summaries
+- 2 to 4 bullets total
+- mention the highest-risk findings first
+- mention whether the PR is ready to merge
 {test_plan_instruction}
 """.strip()
 
         try:
-            return await self.llm_client.chat(
+            executive_summary = await self.llm_client.chat(
                 messages=[
                     {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
                     {"role": "user", "content": prompt},
@@ -255,9 +263,17 @@ Write:
             )
         except Exception:
             self.logger.exception("Falling back to local summary generation")
-            return self._fallback_summary(analyses, overflow_issues, comments)
+            executive_summary = self._fallback_executive_summary(analyses, overflow_issues, comments)
 
-    def _fallback_summary(
+        return self._compose_structured_summary(
+            verdict=verdict,
+            executive_summary=executive_summary,
+            analyses=analyses,
+            overflow_issues=overflow_issues,
+            comments=comments,
+        )
+
+    def _fallback_executive_summary(
         self,
         analyses: list[FileReview],
         overflow_issues: list[tuple[str, ReviewIssue]],
@@ -270,26 +286,80 @@ Write:
             if issue.severity == "high"
         ]
         lines = [
+            f"- Review outcome: **{self._determine_event(analyses)}** with {len(high_risk)} high-severity issue(s) across {len(analyses)} reviewed file(s).",
+            f"- Inline comments posted: {len(comments)}. Additional non-inline issues: {len(overflow_issues)}.",
+        ]
+        lines.extend(f"- `{analysis.path}`: {analysis.summary}" for analysis in analyses[:3])
+        return "\n".join(lines)
+
+    def _compose_structured_summary(
+        self,
+        *,
+        verdict: str,
+        executive_summary: str,
+        analyses: list[FileReview],
+        overflow_issues: list[tuple[str, ReviewIssue]],
+        comments: list[ReviewComment],
+    ) -> str:
+        issue_count = sum(len(analysis.issues) for analysis in analyses)
+        files_reviewed = len(analyses)
+        merge_decision = self._merge_recommendation(verdict)
+        badge = self._decision_badge(verdict)
+        overview_rows = [
+            ("Decision", f"{badge} {verdict}"),
+            ("Merge recommendation", merge_decision),
+            ("Files reviewed", str(files_reviewed)),
+            ("Issues found", str(issue_count)),
+            ("Inline comments posted", str(len(comments))),
+            ("Additional issues", str(len(overflow_issues))),
+        ]
+
+        lines = [
             "## PR Review",
             "",
-            f"Verdict: **{self._determine_event(analyses)}**",
+            "### Decision",
             "",
-            f"- Files reviewed: {len(analyses)}",
-            f"- Inline comments posted: {len(comments)}",
-            f"- High-severity issues: {len(high_risk)}",
-            "",
-            "### File summaries",
+            "| Item | Value |",
+            "| --- | --- |",
         ]
-        lines.extend(f"- `{analysis.path}`: {analysis.summary}" for analysis in analyses[:10])
+        lines.extend(f"| {label} | {value} |" for label, value in overview_rows)
+        lines.extend(
+            [
+                "",
+                "### Merge Flow",
+                "",
+                self._build_mermaid_diagram(verdict, issue_count),
+                "",
+                "### Executive Summary",
+                "",
+                executive_summary.strip() or "- Review completed.",
+            ]
+        )
+
+        if analyses:
+            lines.extend(["", "### File Summary", "", "| File | Assessment | Issues | Summary |", "| --- | --- | ---: | --- |"])
+            for analysis in analyses[:10]:
+                lines.append(
+                    f"| `{analysis.path}` | {analysis.assessment} | {len(analysis.issues)} | {self._sanitize_table_text(analysis.summary)} |"
+                )
+
+        risk_lines = self._build_risk_lines(analyses, overflow_issues)
+        if risk_lines:
+            lines.extend(["", "### Key Risks", ""])
+            lines.extend(risk_lines)
+
         if self.settings.enable_test_plan:
-            lines.extend(["", "### Suggested test plan"])
+            lines.extend(["", "### Suggested Test Plan", ""])
             lines.extend(self._build_test_plan(analyses))
-        if overflow_issues:
-            lines.extend(["", "### Additional issues"])
-            lines.extend(
-                f"- `{path}:{issue.line}` [{issue.severity}/{issue.issue_type}] {issue.message}"
-                for path, issue in overflow_issues[:10]
-            )
+
+        lines.extend(
+            [
+                "",
+                "### Merge Recommendation",
+                "",
+                f"**{merge_decision}**",
+            ]
+        )
         return "\n".join(lines)
 
     def _build_test_plan(self, analyses: list[FileReview]) -> list[str]:
@@ -309,6 +379,85 @@ Write:
             if item not in deduped:
                 deduped.append(item)
         return deduped[:4]
+
+    def _build_risk_lines(
+        self,
+        analyses: list[FileReview],
+        overflow_issues: list[tuple[str, ReviewIssue]],
+    ) -> list[str]:
+        ranked: list[tuple[str, ReviewIssue]] = []
+        for analysis in analyses:
+            for issue in analysis.issues:
+                ranked.append((analysis.path, issue))
+        ranked.extend(overflow_issues)
+        ranked.sort(key=lambda item: (self._severity_rank(item[1].severity), item[0], item[1].line))
+
+        lines: list[str] = []
+        seen: set[tuple[str, int, str]] = set()
+        for path, issue in ranked:
+            key = (path, issue.line, issue.message)
+            if key in seen:
+                continue
+            seen.add(key)
+            lines.append(
+                f"- `{path}:{issue.line}` [{issue.severity}/{issue.issue_type}] {issue.message}"
+            )
+            if len(lines) == 6:
+                break
+        return lines
+
+    @staticmethod
+    def _severity_rank(severity: str) -> int:
+        return {"high": 0, "medium": 1, "low": 2}.get(severity, 3)
+
+    @staticmethod
+    def _sanitize_table_text(text: str) -> str:
+        return " ".join(text.replace("|", "/").split())
+
+    @staticmethod
+    def _decision_badge(verdict: str) -> str:
+        return {
+            "APPROVE": "🟢",
+            "COMMENT": "🟡",
+            "REQUEST_CHANGES": "🔴",
+        }.get(verdict, "⚪")
+
+    def _merge_recommendation(self, verdict: str) -> str:
+        return {
+            "APPROVE": "Ready to merge",
+            "COMMENT": "Merge after reviewing suggested improvements",
+            "REQUEST_CHANGES": "Do not merge until blocking issues are fixed",
+        }.get(verdict, "Review manually before merging")
+
+    def _build_mermaid_diagram(self, verdict: str, issue_count: int) -> str:
+        recommendation = self._merge_recommendation(verdict)
+        if verdict == "REQUEST_CHANGES":
+            decision_node = "hold[Do Not Merge Yet]"
+            decision_class = "hold"
+            path_label = "blocking issues"
+        elif verdict == "COMMENT":
+            decision_node = "caution[Merge After Suggested Fixes]"
+            decision_class = "caution"
+            path_label = "non-blocking issues"
+        else:
+            decision_node = "go[Ready To Merge]"
+            decision_class = "go"
+            path_label = "no blocking issues"
+
+        return "\n".join(
+            [
+                "```mermaid",
+                "flowchart LR",
+                "    pr[PR Diff] --> scan[Structured Review]",
+                f"    scan --> findings[Issues: {issue_count}]",
+                f"    findings -->|{path_label}| {decision_node}",
+                "    classDef go fill:#d1fae5,stroke:#059669,color:#065f46;",
+                "    classDef caution fill:#fef3c7,stroke:#d97706,color:#92400e;",
+                "    classDef hold fill:#fee2e2,stroke:#dc2626,color:#991b1b;",
+                f"    class {decision_class} {decision_class};",
+                "```",
+            ]
+        )
 
     def _build_inline_comments(
         self,
@@ -438,7 +587,9 @@ Reply concisely. Answer directly, explain tradeoffs when relevant, and suggest a
         self,
         prompt_text: str,
         pull_request: PullRequestContext,
+        review: ReviewOutput | None = None,
     ) -> str:
+        findings_context = self._build_findings_context(review)
         prompt = f"""
 You are replying to a GitHub pull request conversation comment.
 
@@ -447,10 +598,13 @@ PR URL: {pull_request.html_url}
 PR description:
 {pull_request.body or "Unavailable"}
 
+Current review findings:
+{findings_context}
+
 User request:
 {prompt_text or "Explain the current review concerns and next steps."}
 
-Reply concisely. Focus on the current PR, explain tradeoffs when useful, and end with a concrete next step when the user is asking for help.
+Reply concisely. Base the answer on the current PR review findings, explain tradeoffs when useful, and end with a concrete next step when the user is asking for help.
 """.strip()
 
         return await self.llm_client.chat(
@@ -463,6 +617,21 @@ Reply concisely. Focus on the current PR, explain tradeoffs when useful, and end
             max_tokens=700,
             temperature=0.1,
         )
+
+    def _build_findings_context(self, review: ReviewOutput | None) -> str:
+        if review is None:
+            return "No fresh review findings are available."
+
+        verdict = review.event
+        lines = [f"Verdict: {verdict}"]
+        for analysis in review.analyses[:8]:
+            issue_summaries = [
+                f"{issue.severity}/{issue.issue_type} at line {issue.line}: {issue.message}"
+                for issue in analysis.issues[:3]
+            ]
+            joined_issues = "; ".join(issue_summaries) if issue_summaries else "no material issues reported"
+            lines.append(f"- {analysis.path}: {analysis.summary} | {joined_issues}")
+        return "\n".join(lines)
 
 
 def extract_added_lines(patch: str) -> set[int]:

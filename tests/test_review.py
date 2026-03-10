@@ -3,10 +3,13 @@ import unittest
 from pr_review_agent.config import Settings, parse_repo_config
 from pr_review_agent.models import (
     ChangedFile,
+    FileReview,
     GitHubPullRequest,
     IssueCommentWebhookPayload,
     LLMReviewResponse,
     PullRequestWebhookPayload,
+    ReviewIssue,
+    ReviewOutput,
 )
 from pr_review_agent.pr_review_graph import (
     PRReviewGraphState,
@@ -20,6 +23,7 @@ from pr_review_agent.review import ReviewService, extract_added_lines
 
 class DummySettings:
     review_simple_changes = False
+    enable_test_plan = True
 
 
 class ReviewTests(unittest.TestCase):
@@ -162,6 +166,65 @@ ignore_keywords = ["@agent ignore"]
         service = ReviewService.__new__(ReviewService)
         service.settings = DummySettings()
         self.assertTrue(service._should_skip_simple_change(file))
+
+    def test_structured_summary_includes_merge_recommendation_and_file_table(self) -> None:
+        service = ReviewService.__new__(ReviewService)
+        service.settings = DummySettings()
+        analysis = FileReview(
+            path="pr_review_agent/llm.py",
+            assessment="REQUEST_CHANGES",
+            summary="Missing retry handling for provider failures.",
+            issues=[
+                ReviewIssue(
+                    line=12,
+                    type="bug",
+                    severity="high",
+                    message="Transient API failures can abort the review path.",
+                    suggestion="Add retries and bounded fallback behavior.",
+                )
+            ],
+            patch="@@ -10,1 +12,1 @@",
+        )
+        body = service._compose_structured_summary(
+            verdict="REQUEST_CHANGES",
+            executive_summary="- High-risk provider failure path still aborts important work.",
+            analyses=[analysis],
+            overflow_issues=[(analysis.path, analysis.issues[0])],
+            comments=[],
+        )
+        self.assertIn("### Merge Recommendation", body)
+        self.assertIn("Do not merge until blocking issues are fixed", body)
+        self.assertIn("```mermaid", body)
+        self.assertIn("| `pr_review_agent/llm.py` | REQUEST_CHANGES | 1 |", body)
+
+    def test_pull_request_comment_context_uses_review_findings(self) -> None:
+        service = ReviewService.__new__(ReviewService)
+        review = ReviewOutput(
+            event="COMMENT",
+            body="summary",
+            comments=[],
+            analyses=[
+                FileReview(
+                    path="pr_review_agent/github.py",
+                    assessment="COMMENT",
+                    summary="HTTP error handling can be clearer.",
+                    issues=[
+                        ReviewIssue(
+                            line=85,
+                            type="maintainability",
+                            severity="medium",
+                            message="The request error path logs but does not include method context in the raised error.",
+                            suggestion="Wrap the exception with request metadata.",
+                        )
+                    ],
+                    patch="@@ -80,1 +85,1 @@",
+                )
+            ],
+        )
+        findings = service._build_findings_context(review)
+        self.assertIn("Verdict: COMMENT", findings)
+        self.assertIn("pr_review_agent/github.py", findings)
+        self.assertIn("medium/maintainability", findings)
 
     def test_llm_review_response_parses_type_alias(self) -> None:
         parsed = LLMReviewResponse.model_validate_json(
